@@ -1,0 +1,10 @@
+stream_id: 10
+name: crypto_btc_usd
+units: USD
+min: 1000.0
+max: 500000.0
+max_rate_of_change: 5000.0   # USD per second (generous: covers flash moves, catches decimal-shift glitches)
+ewma_alpha: 0.05
+conformal_alpha: 0.01        # target false-alarm rate 1%
+# stream_id 11 = ETH-USD uses the same adapter with its own config file if needed;
+# per-stream configs are one flat file each (see detect/rules.hpp loader).

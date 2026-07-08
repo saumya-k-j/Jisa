@@ -1,0 +1,2 @@
+add_executable(bench_core bench_core.cpp)
+target_link_libraries(bench_core PRIVATE telemetry_core telemetry_warnings)

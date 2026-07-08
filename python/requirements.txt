@@ -1,0 +1,11 @@
+# Phase 7 (SPEC 3.10 bindings + 3.11 python/api). Loose pins; implementer
+# installs into the existing python/.venv:
+#   python/.venv/bin/pip install -r python/requirements.txt
+#
+# numpy/pytest are already present in python/.venv (used by python/research);
+# listed here too so this file is a complete, standalone requirements set.
+numpy>=1.26
+pytest>=8.0
+fastapi>=0.110
+httpx>=0.27
+uvicorn>=0.29

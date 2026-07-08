@@ -1,0 +1,6 @@
+stream_id: 7
+name: test_stream
+units: unitless
+min: -10.0
+max: 10.0
+max_rate_of_change: 2.0   # units per second

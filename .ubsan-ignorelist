@@ -1,0 +1,16 @@
+# UBSan special-case (ignore) list.
+#
+# simdjson's SIMD fallbacks call __builtin_clz/__builtin_ctz which, on some
+# inputs, are invoked with a zero argument. That is well-defined for simdjson's
+# usage but UBSan's `builtin` check (part of -fsanitize=undefined) reports
+# "passing zero to clz()/ctz()". This is a pre-existing UPSTREAM issue in
+# simdjson, not in our code (see PLAN.md phase-9 carry-forward and the phase-6
+# reviewer note).
+#
+# We suppress it at compile time via -fsanitize-ignorelist=<this file> (the
+# ignorelist mechanism, preferred over a runtime UBSAN_OPTIONS suppression):
+# any source whose path matches *simdjson* is not instrumented. FetchContent
+# places simdjson under build*/_deps/simdjson-src/..., which matches.
+#
+# `src:` entries with no [section] header apply to all enabled sanitizers.
+src:*simdjson*

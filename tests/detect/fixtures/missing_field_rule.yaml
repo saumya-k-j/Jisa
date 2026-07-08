@@ -1,0 +1,6 @@
+stream_id: 7
+name: broken_stream
+units: unitless
+min: -10.0
+max: 10.0
+# max_rate_of_change deliberately omitted -- malformed per the pinned schema

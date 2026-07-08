@@ -1,0 +1,5 @@
+stream_id: 8
+name: inverted_bounds_stream
+min: 10.0
+max: -10.0
+max_rate_of_change: 1.0

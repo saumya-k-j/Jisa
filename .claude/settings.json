@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -Eq 'rm -rf|rm -fr|:>|mkfs|dd if='; then echo 'BLOCKED: destructive command' >&2; exit 2; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmake --build build 2>/dev/null && ctest --test-dir build --output-on-failure 2>/dev/null || echo 'NOTE: build/tests not green at stop; verify before declaring done.' >&2"
+          }
+        ]
+      }
+    ]
+  }
+}

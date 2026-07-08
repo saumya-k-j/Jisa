@@ -1,0 +1,26 @@
+seed=42 model=sonnet cases=10 work_dir=/var/folders/nh/0ryqkrld6qxbmjm9n5jhh0300000gn/T/triage_eval_ykbl8392
+
+alert(ts_ns/layer)       true_fault   hypothesis        conf correct  judge
+----------------------------------------------------------------------------
+2000000000/conformal     false_alarm  no_conclusion     0.00   False   0.85
+    evidence=['max_turns_exceeded'] judge_reason="Memo correctly avoided a false positive fault-type claim by returning no_conclusion with zero confidence rather than fabricating a hypothesis, which aligns reasonably with a true false_alarm — though the max_turns_exceeded evidence suggests the triage process failed/timed out rather than actually reasoning its way to 'false alarm', so it gets the right outcome for the wrong (non-diagnostic) reason."
+31000000000/rules        spike        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (max_turns_exceeded), providing no hypothesis or evidence to explain the true spike fault.'
+31000000000/conformal    spike        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (agent hit max_turns_exceeded) and gave zero confidence, providing no hypothesis or evidence that explains the true spike fault.'
+32000000000/rules        spike        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (max_turns_exceeded) and provides zero evidence explaining or identifying the spike fault.'
+33000000000/rules        false_alarm  no_conclusion     0.00   False   1.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo correctly abstains with no_conclusion/zero confidence, matching the ground truth that there was no real fault (false_alarm).'
+71000000000/cusum        drift        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (max_turns_exceeded) and provides no hypothesis or evidence explaining the drift fault; fails to identify the true fault type.'
+74000000000/cusum        drift        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (agent hit max_turns without diagnosing), so it provides no hypothesis or evidence explaining the true drift fault.'
+80000000000/cusum        drift        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (max_turns_exceeded) and gave zero evidence explaining the drift fault; it neither identifies nor supports the true fault type.'
+81000000000/rules        drift        no_conclusion     0.00   False   0.00
+    evidence=['max_turns_exceeded'] judge_reason='Memo reached no conclusion (agent hit max_turns without diagnosing), so it provides no explanatory match to the true drift fault.'
+82000000000/rules        drift        telemetry_glitch  0.62   False   0.15
+    evidence=['get_concurrent_alerts in a 2s window around ts=82e9 shows alerts only on stream_id=1 (cusum changepoint at 80e9, then repeated out_of_bounds/conformal escalations through 84e9) — no neighbor streams alerting, so no shared/regional signature', 'Domain card: regional frequency sensors move together during real grid events; divergence from neighbors implies a local/sensor issue rather than a real event', 'get_window shows stream 1 climbing monotonically 56.0->58.0 Hz over 82e9-86e9ns, well outside the nominal +/-0.2Hz band', 'get_baseline for stream 1 gives mean=51.64, var=122.9 (std~11.1) — baseline itself is unusually noisy/wide, consistent with a sensor with pre-existing data-quality problems rather than a physically real multi-stream generation-loss event', 'Pattern is a sustained excursion rather than a flatline (rules out stuck_sensor), and is isolated to a single stream with no corroborating neighbor movement (rules out generation_loss, which requires multi-stream dip + high rate-of-change); closest fit is an isolated single-stream telemetry glitch'] judge_reason='Memo confidently identifies telemetry_glitch/sensor-fault, but the monotonic 56.0->58.0 Hz climb over 4s is a textbook drift signature, not a glitch. The evidence (sustained monotonic ramp, wide baseline variance) actually supports drift better than glitch, but the memo misreads it as noise/data-quality issue rather than a slow directional drift; wrong hypothesis despite decent raw evidence.'
+----------------------------------------------------------------------------
+accuracy=0.000 mean_judge_score=0.200

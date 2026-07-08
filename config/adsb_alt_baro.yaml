@@ -1,0 +1,10 @@
+stream_id: 100
+name: adsb_alt_baro
+units: ft
+min: -1500.0                 # below-sea-level airports exist (e.g. Amsterdam ~-11 ft, Dead Sea strips)
+max: 60000.0
+max_rate_of_change: 200.0    # ft per second (~12000 fpm, beyond any transport aircraft)
+ewma_alpha: 0.1
+conformal_alpha: 0.05        # target false-alarm rate 5% (noisy domain)
+# ADS-B streams are dynamic (one per aircraft, hex-keyed, base_stream_id=100);
+# these bounds apply to the altitude metric for any aircraft stream.

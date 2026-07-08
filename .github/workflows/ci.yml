@@ -1,0 +1,167 @@
+# CI for the Real-Time Telemetry Anomaly Engine.
+#
+# STATUS: authored-but-unverified-until-pushed. This workflow cannot run in the
+# development environment; it has been validated for YAML syntax only
+# (python yaml.safe_load) and has NOT been executed by GitHub Actions. The first
+# push that triggers it is the true verification (mirrors VERIFICATION.md's
+# "Sanitizers run in CI" row, which stays unverified until then).
+#
+# Jobs (ubuntu-latest, clang):
+#   build-release  -> Release build + full ctest (incl. replay determinism)
+#   asan-ubsan     -> ASan+UBSan build + ctest, with a simdjson UBSan ignorelist
+#   tsan           -> TSan build + ctest (lock-free rings under concurrency)
+#   python         -> build pybind11 bindings against a venv, run pytest python/
+#
+# Notes:
+#   - Deps (googletest, simdjson, pybind11) come from CMake FetchContent; the
+#     _deps download dir is redirected to a fixed path and cached.
+#   - On Linux, system clang's sanitizer runtimes work directly, so the
+#     Homebrew-LLVM workaround (D-007, macOS-only) is not needed here.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CC: clang
+  CXX: clang++
+  # Redirect FetchContent's download/extract dir so it can be cached across runs.
+  FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.deps
+
+jobs:
+  build-release:
+    name: release build + ctest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: deps-release-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: deps-release-
+
+      - name: Configure (Release)
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test (full suite)
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Test - replay determinism (checksum match)
+        run: ctest --test-dir build -R replay_determinism --output-on-failure
+
+  asan-ubsan:
+    name: ASan + UBSan build + ctest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: deps-asan-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: deps-asan-
+
+      # -fsanitize-ignorelist suppresses the pre-existing simdjson
+      # __builtin_clz(0) UBSan report (upstream issue; see .ubsan-ignorelist).
+      - name: Configure (Debug + ASan/UBSan)
+        run: >-
+          cmake -B build-asan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSANITIZE=address,undefined
+          -DCMAKE_CXX_FLAGS=-fsanitize-ignorelist=${{ github.workspace }}/.ubsan-ignorelist
+
+      - name: Build
+        run: cmake --build build-asan
+
+      - name: Test (full suite, sanitized)
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          ASAN_OPTIONS: detect_leaks=1
+        run: ctest --test-dir build-asan --output-on-failure
+
+  tsan:
+    name: TSan build + ctest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: deps-tsan-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: deps-tsan-
+
+      - name: Configure (Debug + TSan)
+        run: >-
+          cmake -B build-tsan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSANITIZE=thread
+
+      - name: Build
+        run: cmake --build build-tsan
+
+      - name: Test (full suite, thread-sanitized)
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build-tsan --output-on-failure
+
+  python:
+    name: python bindings + pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Cache FetchContent deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: deps-python-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: deps-python-
+
+      - name: Create venv + install requirements
+        run: |
+          python -m venv python/.venv
+          python/.venv/bin/pip install --upgrade pip
+          python/.venv/bin/pip install -r python/requirements.txt
+
+      - name: Build telemetry_engine bindings against the venv
+        run: |
+          cmake -B build -G Ninja -DBUILD_PYTHON_BINDINGS=ON \
+            -DPython3_EXECUTABLE=$PWD/python/.venv/bin/python
+          cmake --build build --target telemetry_engine
+
+      - name: Install the extension into the venv (site-packages copy, D-038)
+        run: |
+          SITE=$(python/.venv/bin/python -c "import site; print(site.getsitepackages()[0])")
+          cp build/src/bindings/telemetry_engine*.so "$SITE"/
+
+      # Agent LLM calls are all mocked in pytest (no live calls), so no API key
+      # or `claude` CLI is required here.
+      - name: pytest (bindings + API + agent, all mocked)
+        run: python/.venv/bin/python -m pytest python/ -q

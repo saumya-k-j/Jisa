@@ -1,0 +1,8 @@
+stream_id: 1
+name: grid_eu_freq
+units: Hz
+min: 45.0
+max: 55.0
+max_rate_of_change: 0.5   # Hz per second
+ewma_alpha: 0.05
+conformal_alpha: 0.01     # target false-alarm rate 1%
