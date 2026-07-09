@@ -10,6 +10,10 @@ core. Three adapters ship to prove the core is generic: crypto ticks (Coinbase
 WebSocket), grid frequency (Gridradar/Fingrid REST), and ADS-B aircraft
 (adsb.fi REST).
 
+**Live since July 2026.** The Coinbase adapter runs 24/7 on a small VPS behind
+a bounded-backoff reconnecting daemon; `GET /health` reports uptime, total
+messages processed, and last-message timestamp.
+
 The hot path is C++20: a lock-free SPSC/MPSC ring buffer, a fixed-size pool
 allocator with no heap allocation after warmup, and four stacked detection
 layers (hard-bound rules -> online EWMA z-score -> CUSUM changepoint ->
@@ -104,8 +108,7 @@ determinism story.
 ## Measured results
 
 All numbers below are lifted from `VERIFICATION.md`. Benchmarks are from this
-dev machine (Apple Silicon, macOS, Release); numbers on target hardware are
-`needs-live-validation`.
+dev machine (Apple Silicon, macOS, Release); Long-soak is now accumulating on the live deployment (since 2026-07-09); reconnect-under-real-outage remains needs-live-validation until a real upstream outage occurs.
 
 | Metric | Measured | Notes / caveats |
 |---|---|---|
