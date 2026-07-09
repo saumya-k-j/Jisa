@@ -97,7 +97,16 @@ telemetry_add_test(test_false_alarm_rate detect/test_false_alarm_rate.cpp)
 # SpscRingBuffer + PoolAllocator) but also exercises feed/coinbase.hpp and
 # detect/*.hpp, so it needs the same telemetry_feed / FIXTURE_DIR wiring as
 # test_recorder_replayer above rather than the plain telemetry_add_test path.
-telemetry_add_test(test_hot_path_allocation core/test_hot_path_allocation.cpp)
-target_link_libraries(test_hot_path_allocation PRIVATE telemetry_feed)
-target_include_directories(test_hot_path_allocation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/feed)
-target_compile_definitions(test_hot_path_allocation PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/feed/fixtures")
+#
+# Excluded from sanitizer builds (SANITIZE != off): the audit's global
+# operator new/delete overrides collide at link time with the ASan/TSan
+# runtimes (libclang_rt.*_cxx also defines these symbols -> "multiple
+# definition of operator new" on Linux; macOS only links by accident of a
+# different runtime layout, see DECISIONS.md). The audit itself is fully
+# built and verified in the Release tree -- this is exclusion, not weakening.
+if(SANITIZE STREQUAL "off")
+  telemetry_add_test(test_hot_path_allocation core/test_hot_path_allocation.cpp)
+  target_link_libraries(test_hot_path_allocation PRIVATE telemetry_feed)
+  target_include_directories(test_hot_path_allocation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/feed)
+  target_compile_definitions(test_hot_path_allocation PRIVATE FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/feed/fixtures")
+endif()

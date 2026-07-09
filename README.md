@@ -152,9 +152,10 @@ recorded feed (60 adsb.fi polls, 26 aircraft, Heathrow area).
   operator new/delete counting audit (`ctest --test-dir build -R
   HotPathAllocation`): 0 steady-state allocations across parse+ring (450 real
   fixture lines), all four detect layers (10k samples × 2 streams), and 100k
-  pool cycles. Caveat: the audit does not intercept C++17 aligned `operator
-  new`, and the counting assertion is informational (not failing) under
-  sanitizer builds.
+  pool cycles. Caveats: the audit does not intercept C++17 aligned `operator
+  new`, and it runs in the Release tree only — it is excluded from sanitizer
+  builds entirely, because its global `operator new/delete` overrides collide
+  at link time with the ASan/TSan runtimes' own interceptors (D-048).
 - **CI** (`.github/workflows/ci.yml`) is authored but **unverified until
   pushed** — it cannot run in this environment. The YAML is syntactically
   validated (see below); the jobs themselves have not executed.

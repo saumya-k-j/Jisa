@@ -187,6 +187,19 @@ last_message_timestamp is exposed in the response so external monitoring can
 alert on staleness. /healthz (API-process liveness) and /status (human
 summary) are unchanged.
 
+## D-048: Allocation audit excluded from sanitizer builds (symbol collision)
+tests/core/test_hot_path_allocation.cpp replaces global operator new/delete to
+count hot-path allocations. On Linux (CI), ASan's and TSan's C++ runtimes
+(libclang_rt.{asan,tsan}_cxx) also define these symbols, so linking fails with
+"multiple definition of operator new" — the audit and the sanitizer runtimes
+are mutually exclusive by construction, not by policy. macOS builds only
+linked by accident of a different sanitizer runtime layout (see D-007), which
+is why this surfaced first in CI. Resolution: tests/CMakeLists.txt skips the
+target entirely when SANITIZE != off. Exclusion, not weakening: the test is
+unchanged and stays fully asserted in the Release tree, where a
+zero-allocation counting audit is meaningful anyway (sanitizer instrumentation
+itself perturbs allocation behavior). Discovered via the first real CI run.
+
 ## D-047: Deployment TDD done by one author (documented deviation)
 The deployment phase's tests (python/api/test_deploy.py, the two real-adapter
 reconnect tests) were written RED-first but by the same author as the
