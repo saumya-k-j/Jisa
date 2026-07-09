@@ -1,0 +1,9 @@
+.git
+build*/
+python/.venv
+**/.pytest_cache
+**/__pycache__
+docs/
+tests/
+benchmarks/
+data/

@@ -1,6 +1,34 @@
 # PLAN (living)
 
-Current phase: 9 — DONE (2026-07-08). ALL PHASES COMPLETE.
+Current phase: 10 (deployment) — DONE (2026-07-08).
+
+## Phase 10 — 24/7 single-VPS deployment, Coinbase adapter only (DONE 2026-07-08)
+- New C++ `coinbase_daemon` (src/feed/coinbase_daemon_main.cpp,
+  -DBUILD_DAEMON=ON): live WSS ingest -> SPSC ring -> real 4-layer detection,
+  alerts.jsonl + stats.json (atomic tmp+rename) on the data volume,
+  IXWebSocket auto-reconnect (never exits on feed drop), SIGTERM-clean
+  (D-045). config/crypto_eth_usd.yaml added (stream 11).
+- Reconnect coverage gap closed: test_reconnect.cpp previously exercised only
+  a FakeHandler; two new tests drive the REAL CoinbaseTickerHandler (ticker
+  JSON + heartbeat) through disconnect/reconnect. 182/182 C++.
+- FastAPI: GET /health for container orchestration (200 with uptime_seconds /
+  total_messages_processed / last_message_timestamp, 503 while daemon stats
+  unavailable; stale feed stays 200 — D-046). python/api/live.py
+  LiveEngineSource bridges daemon files -> SQLite (offset-tracked, no
+  duplicate rows across restarts); serve.py uvicorn entrypoint. 80/80 python.
+- Docker: multi-stage Dockerfile (bookworm build stage w/ pip cmake+ninja ->
+  python:3.12-slim-bookworm runtime, linux/amd64 pinned, HEALTHCHECK on
+  /health), docker-compose.yml (restart: unless-stopped, port 8000, named
+  volume jisa-data for SQLite history), deploy/entrypoint.sh (either process
+  dies -> container exits -> compose restarts both). docs/deploy.md: fresh
+  Ubuntu 24.04 VPS runbook.
+- TDD deviation for this glue phase documented in D-047 (same-author
+  RED-first tests, not the separate test-writer agent).
+- Live verification results recorded in VERIFICATION.md (image built and run
+  locally under emulation: real ticks ingested, /health 200, feed-drop
+  survival via docker network disconnect/connect).
+
+Previous: Phase 9 — DONE (2026-07-08). All engine phases complete.
 
 ## Phase 9 — README + diagram + CI + final VERIFICATION (DONE 2026-07-08)
 - README.md rewritten (architecture Mermaid, measured-results tables lifted from

@@ -30,6 +30,10 @@ Pause for the user only when the work genuinely requires their input: a
 destructive or irreversible action, a real scope change, or something only they
 can provide. Otherwise keep going and report back when done.
 
+## Commit messages
+Do not add Co-Authored-By trailers, Claude-Session links, or generation
+notices to commit messages.
+
 ## Engineering conventions
 - Language: C++20 for the engine and detection hot path; Python for research,
   the triage agent, and the FastAPI service.

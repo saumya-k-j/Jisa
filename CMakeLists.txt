@@ -31,15 +31,23 @@ enable_testing()
 
 include(FetchContent)
 
-# GoogleTest built from source so sanitizer instrumentation matches the tests.
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
-  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  SYSTEM  # -isystem: suppress warnings from gtest headers in our TUs
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# ON by default (unchanged local/CI behavior); the Docker deployment build
+# turns them OFF so the runtime image build does not fetch googletest or
+# compile the 180-test suite (tests run natively/in CI, not per-image-build).
+option(BUILD_TESTS "Build the C++ test suite" ON)
+option(BUILD_BENCHMARKS "Build the microbenchmarks" ON)
+
+if(BUILD_TESTS)
+  # GoogleTest built from source so sanitizer instrumentation matches the tests.
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SYSTEM  # -isystem: suppress warnings from gtest headers in our TUs
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+endif()
 
 # simdjson for the feed/parse path (SPEC-3.4). SYSTEM so its headers are
 # included with -isystem and our -Wall -Wextra -Werror does not apply to them
@@ -60,8 +68,12 @@ add_library(telemetry_feed INTERFACE)
 target_include_directories(telemetry_feed INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(telemetry_feed INTERFACE telemetry_core simdjson::simdjson)
 
-add_subdirectory(tests)
-add_subdirectory(benchmarks)
+if(BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
+if(BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
 
 # pybind11 bindings (SPEC-3.10). OFF by default so the core build/test/
 # sanitizer trees do not depend on Python or pybind11. Enable with
@@ -71,10 +83,15 @@ if(BUILD_PYTHON_BINDINGS)
   add_subdirectory(src/bindings)
 endif()
 
-# Live smoke/validation tool (NOT a ctest test): connects to the real Coinbase
-# WSS endpoint. OFF by default so the core build/test/sanitizer trees do not
-# depend on IXWebSocket/TLS. Enable with -DBUILD_LIVE_SMOKE=ON.
+# Live WebSocket tools (NOT ctest tests): connect to the real Coinbase WSS
+# endpoint. OFF by default so the core build/test/sanitizer trees do not
+# depend on IXWebSocket/TLS.
+#   BUILD_LIVE_SMOKE : coinbase_live_smoke, the bounded validation run.
+#   BUILD_DAEMON     : coinbase_daemon, the 24/7 deployment daemon
+#                      (ingest + detection + stats/alerts files; see
+#                      docs/deploy.md).
 option(BUILD_LIVE_SMOKE "Build the coinbase_live_smoke WebSocket tool" OFF)
-if(BUILD_LIVE_SMOKE)
+option(BUILD_DAEMON "Build the coinbase_daemon 24/7 deployment daemon" OFF)
+if(BUILD_LIVE_SMOKE OR BUILD_DAEMON)
   add_subdirectory(src/feed)
 endif()

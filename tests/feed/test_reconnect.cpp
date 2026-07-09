@@ -41,12 +41,14 @@
 //                             has the identical effect to on_reconnect().
 // ---------------------------------------------------------------------------
 
+#include <feed/coinbase.hpp>
 #include <feed/handler.hpp>
 
 #include <core/message.hpp>
 #include <core/ring_buffer.hpp>
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <vector>
@@ -204,6 +206,101 @@ TEST(Reconnect, GapDetectionWorksNormallyWithoutAnyReconnectCalls) {
     ASSERT_EQ(gaps.size(), std::size_t{1});
     EXPECT_EQ(std::get<1>(gaps[0]), 100ull);
     EXPECT_EQ(std::get<2>(gaps[0]), 110ull);
+}
+
+// ---------------------------------------------------------------------------
+// SPEC-3.4-RECONNECT on the REAL adapter (deployment coverage, 2026-07-08).
+//
+// The tests above pin the reconnect state machine on a FakeHandler; the state
+// machine lives in the FeedHandler base, but nothing above proves the LIVE
+// Coinbase adapter (CoinbaseTickerHandler) inherits it correctly end to end
+// through real JSON parsing. That is exactly the path the 24/7 daemon takes
+// on a feed drop, so it gets its own tests here. Live socket-level reconnect
+// remains needs-live-validation (exercised by the deployment feed-drop check
+// in VERIFICATION.md).
+// ---------------------------------------------------------------------------
+
+std::string ticker_json(const char* product, std::uint64_t trade_id, const char* price) {
+    std::string s = R"({"type":"ticker","product_id":")";
+    s += product;
+    s += R"(","price":")";
+    s += price;
+    s += R"(","time":"2026-07-08T12:00:00.000000Z","trade_id":)";
+    s += std::to_string(trade_id);
+    s += "}";
+    return s;
+}
+
+TEST(Reconnect, CoinbaseHandlerReconnectSuppressesSpuriousGapThenResumes) {
+    std::vector<GapCall> gaps;
+    telemetry::feed::CoinbaseTickerHandler handler(
+        {{"BTC-USD", 1u}, {"ETH-USD", 2u}},
+        [&](std::uint32_t sid, std::uint64_t from, std::uint64_t to) {
+            gaps.emplace_back(sid, from, to);
+        });
+
+    SpscRingBuffer<Message, 16> buf;
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 1000, "62000.10"), buf));
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 1001, "62000.20"), buf));
+    EXPECT_TRUE(handler.handle(ticker_json("ETH-USD", 7000, "3400.00"), buf));
+
+    // -- feed drop: what the live daemon does on Close/Error --
+    handler.on_disconnect();
+    handler.on_reconnect();
+
+    // First message per stream after resubscribe: trade_ids far from the
+    // pre-disconnect values must NOT fire a spurious gap.
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 5000, "62010.00"), buf));
+    EXPECT_TRUE(handler.handle(ticker_json("ETH-USD", 100, "3401.00"), buf));
+    EXPECT_TRUE(gaps.empty())
+        << "real adapter fired a spurious gap after reconnect";
+
+    // A genuine gap AFTER the fresh baseline must still fire.
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 5005, "62011.00"), buf));
+    ASSERT_EQ(gaps.size(), std::size_t{1});
+    EXPECT_EQ(std::get<0>(gaps[0]), 1u);
+    EXPECT_EQ(std::get<1>(gaps[0]), 5000ull);
+    EXPECT_EQ(std::get<2>(gaps[0]), 5005ull);
+
+    // All six accepted ticks made it into the ring buffer.
+    Message m;
+    int popped = 0;
+    while (buf.try_pop(m)) ++popped;
+    EXPECT_EQ(popped, 6);
+}
+
+TEST(Reconnect, CoinbaseHandlerHeartbeatSeedsBaselineAfterReconnect) {
+    // After a reconnect, a HEARTBEAT (last_trade_id) may be the first event
+    // seen for a product; it must seed the fresh baseline without a gap, and
+    // the next ticker continues from it.
+    std::vector<GapCall> gaps;
+    telemetry::feed::CoinbaseTickerHandler handler(
+        {{"BTC-USD", 1u}},
+        [&](std::uint32_t sid, std::uint64_t from, std::uint64_t to) {
+            gaps.emplace_back(sid, from, to);
+        });
+
+    SpscRingBuffer<Message, 16> buf;
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 1000, "62000.10"), buf));
+
+    handler.on_disconnect();
+    handler.on_reconnect();
+
+    const std::string hb =
+        R"({"type":"heartbeat","product_id":"BTC-USD","last_trade_id":4999,)"
+        R"("sequence":123456,"time":"2026-07-08T12:00:01.000000Z"})";
+    EXPECT_FALSE(handler.handle(hb, buf));  // heartbeat: never pushed
+    EXPECT_TRUE(gaps.empty()) << "heartbeat after reconnect fired a spurious gap";
+
+    // Contiguous ticker after the heartbeat baseline: no gap.
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 5000, "62010.00"), buf));
+    EXPECT_TRUE(gaps.empty());
+
+    // Genuine gap relative to the heartbeat-seeded sequence still fires.
+    EXPECT_TRUE(handler.handle(ticker_json("BTC-USD", 5010, "62011.00"), buf));
+    ASSERT_EQ(gaps.size(), std::size_t{1});
+    EXPECT_EQ(std::get<1>(gaps[0]), 5000ull);
+    EXPECT_EQ(std::get<2>(gaps[0]), 5010ull);
 }
 
 } // namespace

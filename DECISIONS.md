@@ -161,6 +161,39 @@ caught and fed back to the LLM as a JSON error result so it can self-correct
 this is the only deviation beyond the pinned contract and is confined to
 robustness of the un-tested real run.
 
+## D-045: 24/7 deployment: C++ daemon owns detection, files bridge to the API
+The deployable runtime is `coinbase_daemon` (src/feed/coinbase_daemon_main.cpp):
+live Coinbase WSS ingest (public feed, no key) through the audited hot-path
+components (CoinbaseTickerHandler -> SPSC ring -> rules/EWMA/CUSUM/conformal)
+with IXWebSocket automatic reconnection — the process never exits on a feed
+drop. It communicates with the FastAPI service through two files on the Docker
+volume: stats.json (atomic tmp+rename, 1 Hz) and alerts.jsonl (append-only);
+python/api/live.py syncs the JSONL into the same SQLite schema EngineRunner
+uses, tracking a byte offset in a sync_state row so restarts never duplicate.
+Chosen over (a) sockets/gRPC between the processes (more moving parts, nothing
+interrogatable gained) and (b) hosting detection in Python via the bindings
+(would put the WebSocket + hot loop in Python and require pybind11 in the
+runtime image). The daemon is deployment scaffolding like the smoke tool: off
+the hot-path claims (stdio + mutex on alert writes, startup may throw), NOT
+built by default (-DBUILD_DAEMON=ON).
+
+## D-046: /health is container health, not feed freshness
+GET /health (the Docker HEALTHCHECK target) returns 200 while the daemon's
+stats are readable and 503 only before/without them. A stale feed does NOT
+flip it: restarting the container cannot fix an upstream outage, and the
+daemon's auto-reconnect is the correct recovery path (pinned by
+tests/feed/test_reconnect.cpp, incl. two tests on the real adapter).
+last_message_timestamp is exposed in the response so external monitoring can
+alert on staleness. /healthz (API-process liveness) and /status (human
+summary) are unchanged.
+
+## D-047: Deployment TDD done by one author (documented deviation)
+The deployment phase's tests (python/api/test_deploy.py, the two real-adapter
+reconnect tests) were written RED-first but by the same author as the
+implementation, not by the separate test-writer agent the module phases used.
+The phase is glue/infra around already-TDD'd modules; the independent-author
+discipline stays in force for engine modules.
+
 ## D-044: LLM-as-judge is best-effort/offline (malformed => 0.0, no retry)
 `evaluate.score_memos` grades each memo two ways: a deterministic
 label-correctness check (`HYPOTHESIS_TO_FAULT_TYPE[hypothesis] == true_type`,

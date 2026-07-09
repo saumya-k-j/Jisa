@@ -1,0 +1,16 @@
+# 24/7 single-VPS deployment (see docs/deploy.md).
+#   docker compose up -d --build
+services:
+  jisa:
+    build:
+      context: .
+    image: jisa:latest
+    platform: linux/amd64   # VPS is x86_64; dev machine is ARM
+    restart: unless-stopped
+    ports:
+      - "8000:8000"         # FastAPI status service (/health /status /alerts)
+    volumes:
+      - jisa-data:/data     # SQLite alert history + daemon stats survive restarts
+
+volumes:
+  jisa-data:

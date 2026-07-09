@@ -53,6 +53,7 @@ class EngineRunner:
         self.db_path = db_path
 
         self.start_time = time.time()
+        self.last_message_unix: float | None = None
         self.messages_processed = 0
         self.alerts: List[dict] = []
         self.wall_time_s = 0.0
@@ -113,6 +114,10 @@ class EngineRunner:
 
             conn.commit()
             self.wall_time_s = time.perf_counter() - t0
+            # Set once after the loop (a per-message time.time() call would
+            # skew the measured replay throughput).
+            if self.messages_processed > 0:
+                self.last_message_unix = time.time()
         finally:
             conn.close()
 

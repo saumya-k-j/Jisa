@@ -1,0 +1,8 @@
+stream_id: 11
+name: crypto_eth_usd
+units: USD
+min: 50.0
+max: 50000.0
+max_rate_of_change: 500.0    # USD per second (same rationale as BTC: generous for flash moves, catches decimal-shift glitches)
+ewma_alpha: 0.05
+conformal_alpha: 0.01        # target false-alarm rate 1%
