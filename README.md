@@ -24,10 +24,7 @@ agent that investigates confirmed alerts with tools and writes a structured
 incident memo. A pybind11 module (`telemetry_engine`) bridges the two so Python
 drives the real C++ detectors rather than reimplementing their math.
 
-It was built as a recruiting-portfolio artifact, so it is meant to be
-interrogated: correctness, measured performance, and honesty about what is and
-is not verified matter more than feature count. Every module was produced with
-a test-driven, multi-agent workflow in which the tests were authored by a
+Every module was produced with a test-driven, multi-agent workflow in which the tests were authored by a
 different agent than the implementation, from `SPEC.md`, before the code
 existed; a third agent reviewed each phase in a fresh context. When a pinned
 test and the pinned algorithm collided, the test was left failing and resolved
