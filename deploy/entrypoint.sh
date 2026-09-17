@@ -18,6 +18,13 @@ DAEMON_PID=$!
 python /app/api/serve.py &
 API_PID=$!
 
+# Metrics export is opt-in: without DD_AGENT_HOST this deployment behaves
+# exactly as it did before (docs/datadog.md). The exporter is best-effort and
+# is NOT part of the wait -n set: losing metrics must not restart the engine.
+if [ -n "${DD_AGENT_HOST:-}" ]; then
+  python -m python.obs.dogstatsd &
+fi
+
 shutdown() {
   kill -TERM "$DAEMON_PID" "$API_PID" 2>/dev/null || true
 }

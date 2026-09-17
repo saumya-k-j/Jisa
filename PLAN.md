@@ -225,3 +225,15 @@ Phases: see SPEC.md section 7. Mark each done only when reviewer passes it.
   was verified by an independent Python receiver.
 - Known limitation, deliberately not fixed: the queue is in-process, so
   at-least-once holds within a process lifetime and not across a crash (D-051).
+
+## Phase 9 -- python/obs metrics export to Datadog (DONE 2026-09-17)
+- SPEC 3.14 first, then 19 tests, then implementation. Standard library only.
+- Reads the daemon's existing stats.json + alerts.jsonl rather than
+  instrumenting the C++ daemon, which CLAUDE.md's hot-path rules forbid (D-053).
+- Counter-delta handling, daemon-restart detection, alert tailing by layer, and
+  best-effort UDP that cannot take the engine down.
+- Ships deploy/datadog/{dashboard,monitors}.json and docs/datadog.md. Exporter
+  is opt-in via DD_AGENT_HOST, so unconfigured deployments are unchanged.
+- Open: nothing has been sent to a real Datadog account yet, and the
+  engine-vs-Datadog detection-latency comparison is unrun. Both are
+  needs-live-validation in VERIFICATION.md.

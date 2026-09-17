@@ -113,6 +113,22 @@ dropped.
 Status: `GET /healthz` reports uptime and counters for accepted, duplicate,
 delivered, retried and dead-lettered.
 
+### 3.14 python/obs (metrics export -- POST-HOC, never on hot path)
+Forwards the daemon's existing counters to a local Datadog Agent over
+DogStatsD/UDP. Reads only the files the daemon already writes -- `stats.json`
+(atomic, ~1Hz) and `alerts.jsonl` (append-only) -- so the C++ daemon, the
+detection layers and the ingestion path are untouched. Standard library only.
+
+Monotonic counters in stats.json are diffed into DogStatsD count deltas; a
+negative delta means the daemon restarted and the new absolute value is sent
+instead. Alerts are tailed from the exporter's start offset and counted by
+`layer` tag. Emits `jisa.up`, `jisa.uptime_seconds`, `jisa.messages.*`,
+`jisa.ticks.pushed`, `jisa.feed.{gaps,parse_failures,reconnects,last_message_age_seconds}`,
+`jisa.throughput.msgs_per_sec`, `jisa.streams.active` and `jisa.alerts`.
+
+Unreachable Agent is never fatal: a dropped sample leaves a gap in a graph,
+which is the correct symptom. Losing telemetry must not take the engine down.
+
 ## 4. Verification requirements
 - Unit tests per module, written from this spec by the test-writer agent.
 - Replay-determinism test in CI (checksum match).
@@ -124,7 +140,7 @@ delivered, retried and dead-lettered.
 
 ## 5. Repo layout
 As given in the project skeleton (src/{feed,core,detect,bindings}, tests/,
-python/{research,agent,api}, go/{cmd/alertd,delivery}, config/,
+python/{research,agent,api,obs}, go/{cmd/alertd,delivery}, config/,
 docs/domain_cards/, .github/workflows/).
 
 ## 6. Non-goals (do NOT build)

@@ -1,0 +1,88 @@
+{
+  "title": "Jisa — Real-Time Telemetry Anomaly Engine",
+  "description": "Live view of the C++20 ingest/detection daemon. Metrics come from python/obs/dogstatsd.py, which reads the daemon's stats.json and alerts.jsonl; nothing is collected on the hot path.",
+  "layout_type": "ordered",
+  "widgets": [
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "Engine up",
+        "requests": [{"q": "min:jisa.up{service:jisa}", "aggregator": "last",
+          "conditional_formats": [
+            {"comparator": "<", "value": 1, "palette": "white_on_red"},
+            {"comparator": ">=", "value": 1, "palette": "white_on_green"}]}],
+        "precision": 0
+      }
+    },
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "Seconds since last message",
+        "requests": [{"q": "max:jisa.feed.last_message_age_seconds{service:jisa}", "aggregator": "last",
+          "conditional_formats": [
+            {"comparator": ">", "value": 120, "palette": "white_on_red"},
+            {"comparator": ">", "value": 45, "palette": "white_on_yellow"},
+            {"comparator": "<=", "value": 45, "palette": "white_on_green"}]}],
+        "precision": 0
+      }
+    },
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "Uptime (hours)",
+        "requests": [{"q": "max:jisa.uptime_seconds{service:jisa}/3600", "aggregator": "last"}],
+        "precision": 1
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Ingest pipeline — received / processed / pushed",
+        "show_legend": true,
+        "requests": [
+          {"q": "sum:jisa.messages.received{service:jisa}.as_rate()", "display_type": "line"},
+          {"q": "sum:jisa.messages.processed{service:jisa}.as_rate()", "display_type": "line"},
+          {"q": "sum:jisa.ticks.pushed{service:jisa}.as_rate()", "display_type": "line"}
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Alerts by detection layer",
+        "show_legend": true,
+        "requests": [{"q": "sum:jisa.alerts{service:jisa} by {layer}.as_count()",
+                      "display_type": "bars", "style": {"palette": "warm"}}]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Feed health — gaps, parse failures, reconnects",
+        "show_legend": true,
+        "requests": [
+          {"q": "sum:jisa.feed.gaps{service:jisa}.as_count()", "display_type": "bars"},
+          {"q": "sum:jisa.feed.parse_failures{service:jisa}.as_count()", "display_type": "bars"},
+          {"q": "sum:jisa.feed.reconnects{service:jisa}.as_count()", "display_type": "bars"}
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Message rate (daemon lifetime average)",
+        "show_legend": false,
+        "requests": [{"q": "avg:jisa.throughput.msgs_per_sec{service:jisa}", "display_type": "area"}]
+      }
+    },
+    {
+      "definition": {
+        "type": "note",
+        "content": "Silence is the failure mode this dashboard is built around. A process check says the daemon is alive; only `jisa.feed.last_message_age_seconds` says it is still receiving. The monitor on that metric is the one worth waking someone for.",
+        "background_color": "yellow",
+        "font_size": "14",
+        "text_align": "left"
+      }
+    }
+  ]
+}

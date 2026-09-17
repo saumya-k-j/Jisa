@@ -1,0 +1,45 @@
+[
+  {
+    "name": "[Jisa] Feed is silent (connected but no messages)",
+    "type": "metric alert",
+    "query": "max(last_5m):max:jisa.feed.last_message_age_seconds{service:jisa} > 120",
+    "message": "The daemon is up and the socket is open, but no message has arrived in over 2 minutes. This is the failure mode a process-liveness check cannot see.\n\nRunbook: docs/deploy.md (the daemon reconnects on its own; investigate only if this stays firing).",
+    "options": {
+      "thresholds": {"critical": 120, "warning": 45},
+      "notify_no_data": true,
+      "no_data_timeframe": 10,
+      "renotify_interval": 60
+    }
+  },
+  {
+    "name": "[Jisa] Engine down (stats.json stale)",
+    "type": "metric alert",
+    "query": "max(last_5m):min:jisa.up{service:jisa} < 1",
+    "message": "The daemon has stopped rewriting stats.json. Compose restart policy should recover it; if this persists the container is crash-looping.",
+    "options": {
+      "thresholds": {"critical": 1},
+      "notify_no_data": true,
+      "no_data_timeframe": 10
+    }
+  },
+  {
+    "name": "[Jisa] Alert rate anomalous (Datadog's detection vs the engine's)",
+    "type": "query alert",
+    "query": "avg(last_15m):anomalies(sum:jisa.alerts{service:jisa}.as_rate(), 'agile', 2) >= 1",
+    "message": "Datadog's own anomaly detection has flagged the engine's alert rate.\n\nThis monitor exists to be compared against the engine's internal conformal layer, which holds a measured 0.0116 false-alarm rate at alpha=0.01. Two independent detectors watching the same signal: when they disagree, one of them is wrong and it is worth knowing which.",
+    "options": {
+      "thresholds": {"critical": 1},
+      "notify_no_data": false
+    }
+  },
+  {
+    "name": "[Jisa] Feed gap rate climbing",
+    "type": "metric alert",
+    "query": "sum(last_10m):sum:jisa.feed.gaps{service:jisa}.as_count() > 20",
+    "message": "trade_id sequence gaps are accumulating: messages are being dropped upstream or the connection is flapping. Correlate with jisa.feed.reconnects.",
+    "options": {
+      "thresholds": {"critical": 20, "warning": 8},
+      "notify_no_data": false
+    }
+  }
+]

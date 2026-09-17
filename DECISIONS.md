@@ -261,3 +261,32 @@ server) were written from SPEC 3.13 before any implementation existed, and RED
 was confirmed -- `go vet` failed with "undefined: Dispatcher" -- but the test
 author and the implementer were the same, as in D-047. The independent-author
 discipline stays in force for engine modules.
+
+## D-053: Metrics export reads the daemon's files rather than instrumenting it
+The obvious way to ship metrics is to emit them where they happen, inside the
+C++ daemon. That is exactly what CLAUDE.md forbids: no allocation and no locks
+on the hot path, and a UDP send is both. It would also mean the latency numbers
+this project is measured on would now include a syscall nobody accounted for.
+The daemon already writes `stats.json` atomically about once a second and
+appends `alerts.jsonl`, so every counter worth graphing is available outside the
+process for free. python/obs/dogstatsd.py reads those two files on a timer. The
+cost is resolution -- metrics are as fresh as the tick interval, default 10s --
+and that is the right trade for a signal about the engine rather than from it.
+
+Consequences handled explicitly: stats.json counters are monotonic while
+DogStatsD counts are deltas, so each is diffed, and a negative delta is read as
+a daemon restart and reported as the new absolute value rather than a negative
+one. Alert tailing starts at end-of-file, because alerts written before the
+exporter existed are history and not a burst happening now. A torn trailing
+line is left for the next tick, the same rule live.py already uses.
+
+## D-054: `last_message_age_seconds` is the liveness metric, not `up`
+`jisa.up` only reports whether the daemon is still rewriting stats.json, which
+a process check already covers. The failure this system actually has is a feed
+that is connected and silent: the socket is open, the daemon is healthy, and no
+data is arriving. Only the age of the last message distinguishes that from a
+quiet market. The monitor worth paging on is therefore on
+`jisa.feed.last_message_age_seconds`, and `jisa.up` is the cheaper, weaker
+signal kept beside it. This mirrors the reasoning already in app.py, where
+`/health` deliberately returns 200 for a stale-but-readable feed and leaves
+staleness to monitors.
