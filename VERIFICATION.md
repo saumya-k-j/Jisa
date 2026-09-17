@@ -50,3 +50,10 @@ Notes:
   overhead; treat them as upper bounds (stated in bench output and D-008).
 - Benchmark numbers are from this dev machine (Apple Silicon, macOS); numbers
   on target hardware are needs-live-validation.
+| Go delivery unit tests pass (39 cases: HMAC known-answer against an independently computed MAC, tampered-body/wrong-secret/malformed-header rejection, full-jitter backoff bounds + cap at high attempt counts + seed determinism + non-degenerate jitter, bounded dedupe, dispatcher retry-then-succeed on 500/429/502, no-retry on 4xx, dead-letter after max attempts, idempotency-key stability across retries, context cancellation, server 202/200/400/405 and healthz counters) | `cd go && go test ./...` | verified (2026-09-17) |
+| Go delivery suite clean under the race detector, 3 repeats | `cd go && go test -race -count=3 ./...` | verified (2026-09-17) |
+| Go delivery statement coverage 89.7% | `cd go && go test -cover ./delivery/` | verified (2026-09-17) |
+| Go vet and gofmt clean | `cd go && go vet ./... && gofmt -l .` | verified (2026-09-17) |
+| End-to-end alertd run: new alert accepted 202, identical repeat collapses to the same delivery_id with 200, malformed body 400, payload delivered to a subscriber, and the Jisa-Signature HMAC verified by an independent Python receiver (not the Go Verify path) | see go/README.md "Smoke test" | verified (2026-09-17, loopback) |
+| Delivery survives a process restart with deliveries in flight | in-process queue by design (D-051); would require a WAL or broker, and SPEC 6 rules out the broker | unverified (known limitation, not planned) |
+| Delivery to a real remote subscriber over the public internet (TLS, real latency, partial outages, 429 from a real rate limiter) | needs a live subscriber endpoint; verified against httptest and loopback only | needs-live-validation |

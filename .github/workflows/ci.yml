@@ -1,16 +1,15 @@
 # CI for the Real-Time Telemetry Anomaly Engine.
 #
-# STATUS: authored-but-unverified-until-pushed. This workflow cannot run in the
-# development environment; it has been validated for YAML syntax only
-# (python yaml.safe_load) and has NOT been executed by GitHub Actions. The first
-# push that triggers it is the true verification (mirrors VERIFICATION.md's
-# "Sanitizers run in CI" row, which stays unverified until then).
+# STATUS: the four C++/Python jobs are verified green (run 29030980602). The
+# `go` job is authored-but-unverified-until-pushed and is verified by the first
+# push that triggers it, the same way the others were.
 #
 # Jobs (ubuntu-latest, clang):
 #   build-release  -> Release build + full ctest (incl. replay determinism)
 #   asan-ubsan     -> ASan+UBSan build + ctest, with a simdjson UBSan ignorelist
 #   tsan           -> TSan build + ctest (lock-free rings under concurrency)
 #   python         -> build pybind11 bindings against a venv, run pytest python/
+#   go             -> vet, gofmt and race-detector tests for the delivery sidecar
 #
 # Notes:
 #   - Deps (googletest, simdjson, pybind11) come from CMake FetchContent; the
@@ -165,3 +164,32 @@ jobs:
       # or `claude` CLI is required here.
       - name: pytest (bindings + API + agent, all mocked)
         run: python/.venv/bin/python -m pytest python/ -q
+
+  go:
+    name: go delivery sidecar (vet + race tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: go/go.mod
+
+      # Standard library only (D-049), so nothing is downloaded and the build
+      # works with the module proxy unreachable.
+      - name: gofmt
+        working-directory: go
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: vet
+        working-directory: go
+        run: go vet ./...
+
+      - name: Test (race detector)
+        working-directory: go
+        run: go test -race -count=2 ./...
+
+      - name: Coverage
+        working-directory: go
+        run: go test -cover ./delivery/

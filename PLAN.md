@@ -211,3 +211,17 @@ Phases: see SPEC.md section 7. Mark each done only when reviewer passes it.
 - build/       Release, Apple clang (canonical: `cmake -B build -G Ninja`)
 - build-asan/  Debug + ASan+UBSan, Homebrew LLVM clang++
 - build-tsan/  Debug + TSan, Homebrew LLVM clang++
+
+## Phase 8 -- go/delivery alert delivery sidecar (DONE 2026-09-17)
+- SPEC 3.13 written first, then 39 tests from that contract, RED confirmed
+  (`go vet`: "undefined: Dispatcher"), then implementation. Single author --
+  deviation recorded in D-052.
+- Standard library only; no go.sum, no module downloads, offline `go build`.
+- Covers HMAC-signed delivery (D-050), full-jitter exponential backoff,
+  bounded idempotency-key dedupe, retry/permanent-failure classification, and a
+  JSONL dead-letter record for every delivery that never lands.
+- Verified: 39/39 green, clean under -race with -count=3, 89.7% statement
+  coverage, vet and gofmt clean, plus a loopback end-to-end run whose signature
+  was verified by an independent Python receiver.
+- Known limitation, deliberately not fixed: the queue is in-process, so
+  at-least-once holds within a process lifetime and not across a crash (D-051).

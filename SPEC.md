@@ -86,6 +86,33 @@ get_concurrent_alerts(), get_domain_card(domain). Reads the per-domain card
 for known failure modes. Output: structured memo {stream, hypothesis, confidence}.
 Evaluate memos against injected ground truth (LLM-as-judge + labels).
 
+### 3.13 go/delivery (alert delivery sidecar -- POST-ALERT ONLY, never on hot path)
+Takes confirmed alerts off the engine's critical path and delivers them to HTTP
+subscribers with at-least-once semantics. Go, standard library only, no modules.
+
+Ingest: `POST /v1/alerts` carrying the alerts-table shape
+{stream_id, ts_ns, layer, detail}. The delivery key is the caller's
+`Idempotency-Key` header when present, else SHA-256 over the canonical alert
+identity. A key already seen returns 200 with the original delivery id and
+enqueues nothing; a new key returns 202. A malformed body returns 400.
+
+Delivery: POST the stored body to each configured subscriber with headers
+`Idempotency-Key: <key>`, stable across every attempt so a receiver can drop
+duplicates, and `Jisa-Signature: t=<unix>,v1=<hex>` where v1 is
+HMAC-SHA256(secret, "<t>.<body>"). This is payload integrity for outbound
+delivery so a subscriber can confirm a payload came from this engine unaltered.
+It is not authentication and introduces no accounts, credential store, or
+authorization decision (SPEC 6).
+
+Retry: network errors, 429 and 5xx are retryable; other 4xx are permanent and
+are not retried. Backoff is exponential with full jitter -- delay for attempt n
+is drawn uniformly from [0, min(base * 2^n, cap)]. After max attempts the
+delivery is appended to a dead-letter JSONL file and counted, never silently
+dropped.
+
+Status: `GET /healthz` reports uptime and counters for accepted, duplicate,
+delivered, retried and dead-lettered.
+
 ## 4. Verification requirements
 - Unit tests per module, written from this spec by the test-writer agent.
 - Replay-determinism test in CI (checksum match).
@@ -97,7 +124,8 @@ Evaluate memos against injected ground truth (LLM-as-judge + labels).
 
 ## 5. Repo layout
 As given in the project skeleton (src/{feed,core,detect,bindings}, tests/,
-python/{research,agent,api}, config/, docs/domain_cards/, .github/workflows/).
+python/{research,agent,api}, go/{cmd/alertd,delivery}, config/,
+docs/domain_cards/, .github/workflows/).
 
 ## 6. Non-goals (do NOT build)
 - No Kubernetes, no multi-node distribution, no service mesh.

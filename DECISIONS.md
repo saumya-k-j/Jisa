@@ -218,3 +218,46 @@ retried. `false_alarm` cases can never be scored "correct" by hypothesis mapping
 left un-papered-over. `build_eval_cases` is seeded/deterministic on the
 stream+fault side; only the LLM calls are nondeterministic, so run_eval.py prints
 raw memos and evidence for auditability.
+
+## D-049: Go for the alert delivery sidecar (fourth language, deliberately bounded)
+CLAUDE.md fixes the language surface at C++20 for the hot path and Python for
+research/API/agent, so a fourth language needs a reason beyond novelty. Alert
+delivery is the one component whose entire job is concurrent, retry-heavy,
+timer-driven network I/O against subscribers that fail independently of each
+other; goroutines plus context cancellation express that in less code than the
+asyncio equivalent, and the result is a static binary that deploys beside the
+engine with no interpreter. It is strictly off the hot path (SPEC 3.13), so it
+cannot regress the latency numbers this project is measured on. The boundary is
+deliberate: Go does not enter the engine, the bindings, or the API. Standard
+library only, no modules, so `go build` works offline and the dependency
+surface stays at zero. Secondary and stated plainly because this repo is a
+recruiting artifact: it widens the demonstrated language surface.
+
+## D-050: Delivery signing is payload integrity, not authentication (SPEC 6 boundary)
+SPEC 6 rules out authentication and user accounts. The `Jisa-Signature` header
+does not cross that line. It is an HMAC-SHA256 over "<timestamp>.<body>" that
+lets a subscriber confirm a payload arrived from this engine unaltered, the
+same role the FNV-1a checksum plays for the replay harness. There is no
+identity, no account, no credential store, and no authorization decision
+anywhere in the path: the service never decides whether a caller may do
+something, only whether a body is intact. The timestamp is inside the MAC so a
+captured header cannot be reattached to a different payload. Comparison uses
+hmac.Equal; a byte-wise compare would leak the expected MAC through timing.
+
+## D-051: In-process delivery queue, and what that costs
+`POST /v1/alerts` answers 202 immediately and runs the retry schedule in a
+goroutine, so the engine never blocks on a slow subscriber. The queue is
+in-memory. If the process dies with deliveries in flight those deliveries are
+lost, and the dedupe map is not persisted either, so a restart can re-accept a
+key it had already seen. Both follow from "prefer the simplest thing that meets
+the spec" (CLAUDE.md) rather than being oversights: durability would mean a WAL
+or an external broker, and SPEC 6 rules out the broker. The at-least-once claim
+therefore holds within a process lifetime, not across a crash, and
+VERIFICATION.md records it that way rather than implying more.
+
+## D-052: Delivery-phase TDD done by one author (documented deviation, cf. D-047)
+The Go tests (39 cases across signature, backoff, dedupe, dispatcher and
+server) were written from SPEC 3.13 before any implementation existed, and RED
+was confirmed -- `go vet` failed with "undefined: Dispatcher" -- but the test
+author and the implementer were the same, as in D-047. The independent-author
+discipline stays in force for engine modules.

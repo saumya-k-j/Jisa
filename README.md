@@ -98,7 +98,10 @@ flowchart TB
 ```
 
 The detection layers run on a single consumer thread that drains the ring and
-executes L1->L4 in order; the triage agent and API never touch the hot path.
+executes L1->L4 in order; the triage agent and API never touch the hot path
+Alerts also fan out through `go/`, a Go delivery sidecar that signs each
+payload, retries with full jitter and dead-letters what never lands; like the
+agent it sits strictly post-alert (SPEC 3.13, DECISIONS D-049).
 See `docs/architecture.md` for a prose walkthrough of one message's life and the
 determinism story.
 
@@ -156,6 +159,10 @@ recorded feed (60 adsb.fi polls, 26 aircraft, Heathrow area).
   new`, and it runs in the Release tree only — it is excluded from sanitizer
   builds entirely, because its global `operator new/delete` overrides collide
   at link time with the ASan/TSan runtimes' own interceptors (D-048).
+- **Delivery is at-least-once within a process lifetime, not across a crash**:
+the sidecar's queue and dedupe map are in-memory, so deliveries in flight are
+lost if the process dies (D-051). Stated rather than fixed; durability would
+need a WAL or a broker, and SPEC 6 rules out the broker.
 - **CI** (`.github/workflows/ci.yml`) is authored but **unverified until
   pushed** — it cannot run in this environment. The YAML is syntactically
   validated (see below); the jobs themselves have not executed.
@@ -245,6 +252,35 @@ app = create_app(runner)   # GET /status /alerts /healthz
 # uvicorn serve:app --port 8000
 ```
 
+### Go delivery sidecar
+
+Standard library only, so it builds offline with no module downloads.
+
+```
+cd go
+go test ./...                      # 39 cases
+go test -race -count=3 ./...
+go test -cover ./delivery/         # 89.7% of statements
+go build -o ../build/alertd ./cmd/alertd
+```
+
+Run it beside the engine; every variable below is required except the last two:
+
+```
+JISA_DELIVERY_SECRET=whsec_... \
+JISA_DELIVERY_SUBSCRIBERS=https://example.test/hook \
+JISA_DELIVERY_ADDR=:8081 \
+JISA_DELIVERY_DEAD_LETTER=dead_letter.jsonl \
+./build/alertd
+```
+
+`POST /v1/alerts` takes the alerts-table shape and answers 202 with a
+`delivery_id`, or 200 with the same id when the idempotency key has been seen
+before. `GET /healthz` reports accepted / duplicate / delivered / retried /
+dead-lettered. See `go/README.md` for the smoke test and
+DECISIONS D-049..D-052 for why this is Go, why signing is not authentication,
+and what the in-process queue does not guarantee.
+
 ### Live Coinbase smoke tool (optional)
 
 ```sh
@@ -270,6 +306,9 @@ python/
   api/              engine.py (in-process pipeline) + app.py (FastAPI) + SQLite
   agent/            tools.py, triage.py, evaluate.py, run_eval.py (post-alert triage)
   tests/            binding tests
+go/
+  cmd/alertd/       delivery sidecar binary (stdlib only, no modules)
+  delivery/         signature, backoff, dedupe, dispatcher, server (+ tests)
 config/             per-domain YAML (crypto_ticks, grid_eu_freq, adsb_alt_baro)
 docs/
   feeds/            researched feed API references
