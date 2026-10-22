@@ -348,3 +348,8 @@ Every non-obvious choice is logged with a one-line rationale in `DECISIONS.md`
 
 See `VERIFICATION.md` for the per-capability command that reproduces each claim,
 and its verified / unverified / needs-live-validation status.
+
+## Contributors
+
+- @saumya-k-j
+- Jihan Mankani (@Jihan-5)
