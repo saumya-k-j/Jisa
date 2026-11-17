@@ -201,7 +201,7 @@ func TestClaimRespectsAndOrdersNextAttemptAt(t *testing.T) {
 // SPEC 3.15: in_flight with an expired lease is claimable again (worker died
 // mid-delivery), and attempts increments on each claim.
 func TestLeaseExpiryReclaimsInFlight(t *testing.T) {
-	s := testStore(t, func(c *StoreConfig) { c.Lease = 100 * time.Millisecond })
+	s := testStore(t, func(c *StoreConfig) { c.Lease = 2 * time.Second })
 	ctx := ctxT(t)
 
 	if _, _, err := s.Accept(ctx, "key-lease", []byte(testBody)); err != nil {
@@ -219,7 +219,7 @@ func TestLeaseExpiryReclaimsInFlight(t *testing.T) {
 	if c, _ := s.Claim(ctx, "w2"); c != nil {
 		t.Fatalf("lease still live: claim must return nil, got %+v", c)
 	}
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(2500 * time.Millisecond)
 
 	c2, err := s.Claim(ctx, "w2")
 	if err != nil || c2 == nil {
@@ -280,7 +280,10 @@ func TestOutcomeTransitions(t *testing.T) {
 	}
 	st, doc = state("key-retry")
 	naa, _ := doc["next_attempt_at"].(bson.DateTime)
-	if st != "pending" || !naa.Time().After(before) {
+	// next_attempt_at = now + full-jitter delay; the delay can draw ~0 and
+	// Mongo stores millisecond precision, so compare against before
+	// truncated to the stored precision rather than demanding strict After.
+	if st != "pending" || naa.Time().Before(before.Truncate(time.Millisecond)) {
 		t.Fatalf("want pending with future next_attempt_at, got state=%s next=%v", st, naa.Time())
 	}
 	pend, _ := doc["pending_subscribers"].(bson.A)

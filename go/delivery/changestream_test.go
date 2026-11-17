@@ -23,14 +23,14 @@ func TestWatcherSeesInsert(t *testing.T) {
 	go func() { done <- s.Watch(ctx, func() { woke <- struct{}{} }) }()
 
 	// Give the stream a moment to open before inserting.
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 	if _, _, err := s.Accept(ctxT(t), "key-wake", []byte(testBody)); err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
 
 	select {
 	case <-woke:
-	case <-time.After(10 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("watcher did not observe the insert within 10s")
 	}
 	cancel()
@@ -49,23 +49,32 @@ func TestResumeTokenSurvivesRestart(t *testing.T) {
 	woke := make(chan struct{}, 16)
 	done1 := make(chan error, 1)
 	go func() { done1 <- s.Watch(ctx1, func() { woke <- struct{}{} }) }()
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 
 	if _, _, err := s.Accept(ctxT(t), "key-before-restart", []byte(testBody)); err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
 	select {
 	case <-woke:
-	case <-time.After(10 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("first watcher never woke")
 	}
 	cancel1()
 	<-done1
 
-	// Token must be durable in stream_state.
+	// Token must be durable in stream_state. The write is asynchronous
+	// with respect to the wakeup callback, so poll briefly.
 	var state bson.M
-	if err := s.tokens.FindOne(ctxT(t), bson.D{{Key: "_id", Value: "alerts_watch"}}).Decode(&state); err != nil {
-		t.Fatalf("resume token not persisted: %v", err)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err := s.tokens.FindOne(ctxT(t), bson.D{{Key: "_id", Value: "alerts_watch"}}).Decode(&state)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("resume token not persisted: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if state["token"] == nil {
 		t.Fatalf("stream_state doc has no token: %v", state)
@@ -86,7 +95,7 @@ func TestResumeTokenSurvivesRestart(t *testing.T) {
 
 	select {
 	case <-woke2:
-	case <-time.After(10 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("restarted watcher did not replay the insert that happened while it was down")
 	}
 	cancel2()

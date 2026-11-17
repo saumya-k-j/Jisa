@@ -140,6 +140,17 @@ jobs:
           TEST_PASS: ${{ env.TEST_PASS }}
           TEST_SKIP: ${{ env.TEST_SKIP }}
 
+      - name: Commit failure diagnostics back to the branch
+        if: failure()
+        run: |
+          mkdir -p go/verification
+          cp /tmp/integration.log go/verification/last_failure.log 2>/dev/null || true
+          cp /tmp/results/fault.log go/verification/last_fault.log 2>/dev/null || true
+          cp /tmp/results/bench.log go/verification/last_bench.log 2>/dev/null || true
+          git config user.name "jisa-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add -f go/verification/ && git commit -m "mongo-verify: failure diagnostics [skip mongo-verify]" && git push origin HEAD:mongo-durable-store || true
+
       - name: Commit results back to the branch
         run: |
           git config user.name "jisa-ci"

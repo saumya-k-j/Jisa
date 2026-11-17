@@ -358,7 +358,12 @@ func (s *Store) saveResumeToken(ctx context.Context, token bson.Raw) {
 	if token == nil {
 		return
 	}
-	_, _ = s.tokens.ReplaceOne(ctx,
+	// The watch context is cancelled on shutdown, but the token for an
+	// event that was already handed to the worker must still land --
+	// otherwise a restarted watcher replays from too far back.
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_, _ = s.tokens.ReplaceOne(wctx,
 		bson.D{{Key: "_id", Value: "alerts_watch"}},
 		bson.D{
 			{Key: "_id", Value: "alerts_watch"},
