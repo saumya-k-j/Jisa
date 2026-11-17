@@ -1,0 +1,114 @@
+?   	github.com/saumya-k-j/Jisa/go/cmd/alertbench	[no test files]
+?   	github.com/saumya-k-j/Jisa/go/cmd/alertd	[no test files]
+?   	github.com/saumya-k-j/Jisa/go/cmd/faultcheck	[no test files]
+=== RUN   TestDelayStaysWithinFullJitterBound
+--- PASS: TestDelayStaysWithinFullJitterBound (0.00s)
+=== RUN   TestDelayNeverExceedsCapAtHighAttempts
+--- PASS: TestDelayNeverExceedsCapAtHighAttempts (0.00s)
+=== RUN   TestDelayIsDeterministicForAGivenSeed
+--- PASS: TestDelayIsDeterministicForAGivenSeed (0.00s)
+=== RUN   TestDelayActuallyJitters
+--- PASS: TestDelayActuallyJitters (0.00s)
+=== RUN   TestWatcherSeesInsert
+--- PASS: TestWatcherSeesInsert (2.04s)
+=== RUN   TestResumeTokenSurvivesRestart
+--- PASS: TestResumeTokenSurvivesRestart (2.05s)
+=== RUN   TestCheckRecordsAnUnseenKey
+--- PASS: TestCheckRecordsAnUnseenKey (0.00s)
+=== RUN   TestCheckReturnsTheOriginalIDForADuplicate
+--- PASS: TestCheckReturnsTheOriginalIDForADuplicate (0.00s)
+=== RUN   TestDedupeIsBounded
+--- PASS: TestDedupeIsBounded (0.00s)
+=== RUN   TestDeliverReachesEverySubscriber
+--- PASS: TestDeliverReachesEverySubscriber (0.00s)
+=== RUN   TestDeliverCarriesAValidSignatureAndIdempotencyKey
+--- PASS: TestDeliverCarriesAValidSignatureAndIdempotencyKey (0.00s)
+=== RUN   TestDeliverRetriesRetryableStatusThenSucceeds
+=== RUN   TestDeliverRetriesRetryableStatusThenSucceeds/Internal_Server_Error
+=== RUN   TestDeliverRetriesRetryableStatusThenSucceeds/Too_Many_Requests
+=== RUN   TestDeliverRetriesRetryableStatusThenSucceeds/Bad_Gateway
+--- PASS: TestDeliverRetriesRetryableStatusThenSucceeds (0.02s)
+    --- PASS: TestDeliverRetriesRetryableStatusThenSucceeds/Internal_Server_Error (0.01s)
+    --- PASS: TestDeliverRetriesRetryableStatusThenSucceeds/Too_Many_Requests (0.01s)
+    --- PASS: TestDeliverRetriesRetryableStatusThenSucceeds/Bad_Gateway (0.00s)
+=== RUN   TestDeliverDoesNotRetryPermanentFailure
+--- PASS: TestDeliverDoesNotRetryPermanentFailure (0.00s)
+=== RUN   TestDeliverDeadLettersAfterMaxAttempts
+--- PASS: TestDeliverDeadLettersAfterMaxAttempts (0.01s)
+=== RUN   TestDeliverKeepsTheIdempotencyKeyStableAcrossRetries
+--- PASS: TestDeliverKeepsTheIdempotencyKeyStableAcrossRetries (0.01s)
+=== RUN   TestDeliverStopsWhenContextIsCancelled
+--- PASS: TestDeliverStopsWhenContextIsCancelled (0.00s)
+=== RUN   TestPostAlertAcceptsANewAlert
+--- PASS: TestPostAlertAcceptsANewAlert (0.00s)
+=== RUN   TestPostAlertIsIdempotentOnRepeat
+--- PASS: TestPostAlertIsIdempotentOnRepeat (0.00s)
+=== RUN   TestPostAlertDerivesAKeyFromAlertIdentity
+--- PASS: TestPostAlertDerivesAKeyFromAlertIdentity (0.00s)
+=== RUN   TestPostAlertRejectsBadInput
+=== RUN   TestPostAlertRejectsBadInput/not_json
+=== RUN   TestPostAlertRejectsBadInput/empty
+=== RUN   TestPostAlertRejectsBadInput/missing_layer
+--- PASS: TestPostAlertRejectsBadInput (0.00s)
+    --- PASS: TestPostAlertRejectsBadInput/not_json (0.00s)
+    --- PASS: TestPostAlertRejectsBadInput/empty (0.00s)
+    --- PASS: TestPostAlertRejectsBadInput/missing_layer (0.00s)
+=== RUN   TestHealthzReportsCounters
+--- PASS: TestHealthzReportsCounters (0.00s)
+=== RUN   TestMethodNotAllowed
+--- PASS: TestMethodNotAllowed (0.00s)
+=== RUN   TestSignMatchesIndependentlyComputedMAC
+--- PASS: TestSignMatchesIndependentlyComputedMAC (0.00s)
+=== RUN   TestSignRoundTripsThroughVerify
+--- PASS: TestSignRoundTripsThroughVerify (0.00s)
+=== RUN   TestVerifyRejectsAlteredInput
+=== RUN   TestVerifyRejectsAlteredInput/tampered_body
+=== RUN   TestVerifyRejectsAlteredInput/wrong_secret
+=== RUN   TestVerifyRejectsAlteredInput/wrong_mac
+--- PASS: TestVerifyRejectsAlteredInput (0.00s)
+    --- PASS: TestVerifyRejectsAlteredInput/tampered_body (0.00s)
+    --- PASS: TestVerifyRejectsAlteredInput/wrong_secret (0.00s)
+    --- PASS: TestVerifyRejectsAlteredInput/wrong_mac (0.00s)
+=== RUN   TestVerifyRejectsMalformedHeader
+=== RUN   TestVerifyRejectsMalformedHeader/#00
+=== RUN   TestVerifyRejectsMalformedHeader/garbage
+=== RUN   TestVerifyRejectsMalformedHeader/t=1750000000
+=== RUN   TestVerifyRejectsMalformedHeader/v1=abcd
+=== RUN   TestVerifyRejectsMalformedHeader/t=notanumber,v1=abcd
+=== RUN   TestVerifyRejectsMalformedHeader/t=1750000000,v1=nothex!!
+--- PASS: TestVerifyRejectsMalformedHeader (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/#00 (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/garbage (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/t=1750000000 (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/v1=abcd (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/t=notanumber,v1=abcd (0.00s)
+    --- PASS: TestVerifyRejectsMalformedHeader/t=1750000000,v1=nothex!! (0.00s)
+=== RUN   TestAcceptDuplicateKeyMeansAlreadyAccepted
+--- PASS: TestAcceptDuplicateKeyMeansAlreadyAccepted (0.03s)
+=== RUN   TestAcceptSurvivesRestart
+--- PASS: TestAcceptSurvivesRestart (0.04s)
+=== RUN   TestClaimIsAtomicUnderContention
+--- PASS: TestClaimIsAtomicUnderContention (0.19s)
+=== RUN   TestClaimRespectsAndOrdersNextAttemptAt
+--- PASS: TestClaimRespectsAndOrdersNextAttemptAt (0.04s)
+=== RUN   TestLeaseExpiryReclaimsInFlight
+--- PASS: TestLeaseExpiryReclaimsInFlight (2.53s)
+=== RUN   TestOutcomeTransitions
+    store_test.go:310: want failed, got pending
+--- FAIL: TestOutcomeTransitions (0.05s)
+=== RUN   TestIndexes
+    store_test.go:359: index set wrong: unique=false claim=false ttl=false ([{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"} {"v":{"$numberInt":"2"},"key":{"idempotency_key":{"$numberInt":"1"}},"name":"idempotency_key_1","unique":true} {"v":{"$numberInt":"2"},"key":{"state":{"$numberInt":"1"},"next_attempt_at":{"$numberInt":"1"}},"name":"state_1_next_attempt_at_1"} {"v":{"$numberInt":"2"},"key":{"delivered_at":{"$numberInt":"1"}},"name":"delivered_at_1","expireAfterSeconds":{"$numberInt":"1234"}}])
+--- FAIL: TestIndexes (0.02s)
+=== RUN   TestWorkerDeliversAndMarksDelivered
+--- PASS: TestWorkerDeliversAndMarksDelivered (0.09s)
+=== RUN   TestWorkerRetryableFailureIsRedeliveredLater
+--- PASS: TestWorkerRetryableFailureIsRedeliveredLater (0.54s)
+=== RUN   TestWorkerPermanent4xxFailsAndDeadLetters
+--- PASS: TestWorkerPermanent4xxFailsAndDeadLetters (0.08s)
+=== RUN   TestDeliveredSubscriberNotRePosted
+--- PASS: TestDeliveredSubscriberNotRePosted (0.54s)
+=== RUN   TestManyWorkersEachAlertDeliveredOnce
+--- PASS: TestManyWorkersEachAlertDeliveredOnce (0.46s)
+FAIL
+FAIL	github.com/saumya-k-j/Jisa/go/delivery	8.779s
+FAIL
