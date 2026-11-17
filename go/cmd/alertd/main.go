@@ -70,14 +70,48 @@ func main() {
 		Client:     &http.Client{Timeout: 10 * time.Second},
 	})
 
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           delivery.NewServer(dispatcher, delivery.NewDedupe(envInt("JISA_DELIVERY_DEDUPE_MAX", 8192))).Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// SPEC 3.15: with MONGODB_URI set, accepted alerts are durable in a
+	// MongoDB replica set and delivered by workers; without it, the 3.13
+	// in-memory mode runs unchanged (zero-dependency deployment).
+	var handler http.Handler
+	if uri := os.Getenv("MONGODB_URI"); uri != "" {
+		store, err := delivery.OpenStore(ctx, delivery.StoreConfig{
+			URI:         uri,
+			Database:    env("JISA_DELIVERY_DB", "jisa"),
+			Subscribers: subscribers,
+			TTLSeconds:  int32(envInt("JISA_DELIVERY_TTL_SECONDS", 604800)),
+			Lease:       time.Duration(envInt("JISA_DELIVERY_LEASE_SECONDS", 30)) * time.Second,
+			MaxAttempts: envInt("JISA_DELIVERY_MAX_ATTEMPTS", 6),
+			Backoff: delivery.NewBackoff(
+				500*time.Millisecond, 30*time.Second, time.Now().UnixNano()),
+			DeadLetter: deadFile,
+		})
+		if err != nil {
+			log.Fatalf("durable store: %v", err)
+		}
+		defer func() {
+			closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = store.Close(closeCtx)
+		}()
+		workers := envInt("JISA_DELIVERY_WORKERS", 4)
+		for i := 0; i < workers; i++ {
+			go delivery.NewWorker(store, dispatcher).Run(ctx)
+		}
+		log.Printf("durable mode: db=%s workers=%d", env("JISA_DELIVERY_DB", "jisa"), workers)
+		handler = delivery.NewDurableServer(dispatcher, store).Handler()
+	} else {
+		handler = delivery.NewServer(dispatcher, delivery.NewDedupe(envInt("JISA_DELIVERY_DEDUPE_MAX", 8192))).Handler()
+	}
+
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	go func() {
 		log.Printf("alertd listening on %s, %d subscriber(s), dead-letter %s",

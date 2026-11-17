@@ -1,4 +1,6 @@
 build*/
+go/go.work
+go/go.work.sum
 python/.venv/
 __pycache__/
 *.pyc

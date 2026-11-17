@@ -22,16 +22,26 @@ type Alert struct {
 	Detail   string `json:"detail"`
 }
 
-// Server exposes the ingest and status endpoints of SPEC 3.13.
+// Server exposes the ingest and status endpoints of SPEC 3.13. With a
+// store attached (SPEC 3.15) accept goes through MongoDB and delivery is
+// done by workers; without one, the 3.13 in-memory path runs unchanged.
 type Server struct {
 	dispatcher *Dispatcher
 	dedupe     *Dedupe
+	store      *Store
 	started    time.Time
 }
 
 // NewServer returns a Server that hands accepted alerts to dispatcher.
 func NewServer(dispatcher *Dispatcher, dedupe *Dedupe) *Server {
 	return &Server{dispatcher: dispatcher, dedupe: dedupe, started: time.Now()}
+}
+
+// NewDurableServer returns a Server whose accept path is the durable store:
+// the 202 is written only after the alert is on a majority of replica set
+// nodes, and the in-memory dedupe is not consulted (SPEC 3.15).
+func NewDurableServer(dispatcher *Dispatcher, store *Store) *Server {
+	return &Server{dispatcher: dispatcher, store: store, started: time.Now()}
 }
 
 // Handler returns the HTTP routes.
@@ -82,6 +92,26 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 		key = DeriveKey(alert)
 	}
 
+	if s.store != nil {
+		// Durable accept (SPEC 3.15): the insert carries majority write
+		// concern, so by the time 202 leaves this handler the alert
+		// survives the loss of any single node. Delivery is the workers'
+		// job; nothing further happens on this goroutine.
+		id, duplicate, err := s.store.Accept(r.Context(), key, body)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "store unavailable"})
+			return
+		}
+		if duplicate {
+			s.dispatcher.markDuplicate()
+			writeJSON(w, http.StatusOK, map[string]any{"delivery_id": id, "duplicate": true})
+			return
+		}
+		s.dispatcher.markAccepted()
+		writeJSON(w, http.StatusAccepted, map[string]any{"delivery_id": id, "duplicate": false})
+		return
+	}
+
 	id, duplicate := s.dedupe.Check(key, deliveryID(key))
 	if duplicate {
 		s.dispatcher.markDuplicate()
@@ -106,6 +136,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	stats := s.dispatcher.Stats()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"uptime_s":      int64(time.Since(s.started).Seconds()),
+		"durable":       s.store != nil,
 		"accepted":      stats.Accepted,
 		"duplicate":     stats.Duplicate,
 		"delivered":     stats.Delivered,

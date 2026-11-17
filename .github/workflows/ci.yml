@@ -173,11 +173,16 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25.x"
           cache-dependency-path: go/go.mod
 
-      # Standard library only (D-049), so nothing is downloaded and the build
-      # works with the module proxy unreachable.
+      # The only dependency is the official MongoDB driver (SPEC 3.15 /
+      # D-055); without MONGODB_URI the Mongo-backed tests skip, so this job
+      # stays hermetic. The replica-set integration tests, fault injection
+      # and benchmarks run in mongo-verify.yml.
+      - name: Resolve modules
+        working-directory: go
+        run: go mod tidy
       - name: gofmt
         working-directory: go
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }

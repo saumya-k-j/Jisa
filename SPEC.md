@@ -129,6 +129,79 @@ instead. Alerts are tailed from the exporter's start offset and counted by
 Unreachable Agent is never fatal: a dropped sample leaves a gap in a graph,
 which is the correct symptom. Losing telemetry must not take the engine down.
 
+### 3.15 go/delivery durable store (MongoDB -- POST-ALERT ONLY, never on hot path)
+Replaces the in-process queue and in-memory dedupe of 3.13 (DECISIONS D-051)
+with a durable store so accepted alerts survive process death. MongoDB,
+official Go driver v2, pinned. Connection string comes from `MONGODB_URI` and
+is never committed; with `MONGODB_URI` unset the sidecar runs exactly as in
+3.13 (in-memory mode), so the zero-dependency deployment keeps working.
+Development/verification topology is a 3-node replica set (Docker Compose,
+`deploy/docker-compose.mongo.yml`). All writes use majority write concern:
+a 202 means the alert is on a majority of nodes, and survives the loss of
+any single node.
+
+Collection `alerts`, one document per accepted alert:
+`{idempotency_key, delivery_id, body, state, attempts, next_attempt_at,
+pending_subscribers, claimed_at, worker, created_at, delivered_at}`.
+Indexes: unique on `idempotency_key`; `{state, next_attempt_at}` for claims;
+TTL on `delivered_at` with `expireAfterSeconds` from
+`JISA_DELIVERY_TTL_SECONDS` (default 604800); `delivered_at` is only ever set
+on delivered documents, so the TTL expires delivered alerts and nothing else.
+
+Accept: insert with state `pending`, `next_attempt_at = now`, majority
+concern, THEN answer 202. A duplicate-key error on `idempotency_key` is not a
+failure: it means the alert was already accepted, and the handler answers 200
+with the original `delivery_id` and `"duplicate": true`, reading the stored
+document. The in-memory Dedupe of 3.13 is not consulted in durable mode.
+
+State machine: `pending -> in_flight -> delivered | failed`, with
+`in_flight -> pending` on retryable failure (reschedule) and on lease expiry
+(worker died mid-delivery). Workers claim with a single atomic
+`findOneAndUpdate`: filter `state == "pending" && next_attempt_at <= now`,
+or `state == "in_flight" && claimed_at <= now - lease` (lease from
+`JISA_DELIVERY_LEASE_SECONDS`, default 30); update sets `state = "in_flight"`,
+`claimed_at = now`, `worker`, increments `attempts`; sorted by
+`next_attempt_at`; returns the post-image. Atomicity of this single document
+operation is what guarantees two workers never deliver the same alert
+concurrently. Outcomes: every subscriber in `pending_subscribers` delivered
+-> `delivered`, `delivered_at = now`; retryable failure -> back to `pending`
+with `next_attempt_at = now + backoff(attempts)` using the 3.13 full-jitter
+backoff unchanged, delivered subscribers removed from `pending_subscribers`
+so a retry never re-posts to a subscriber that already accepted; permanent
+4xx or attempts exhausted -> `failed` plus a dead-letter JSONL record exactly
+as in 3.13.
+
+Wakeup: workers watch the collection with a change stream filtered to
+inserts, so a new alert is claimed without polling delay; a ticker sweeps
+`next_attempt_at` for due retries and expired leases (change streams do not
+fire on the passage of time). After processing each batch of events the
+worker persists the stream's resume token to collection `stream_state`
+(doc `_id = "alerts_watch"`), majority concern; on start it resumes from the
+stored token, so a restarted worker continues where it stopped and an insert
+during the gap is still observed. An invalidated or expired token falls back
+to a full `pending` sweep, which the ticker performs anyway: the change
+stream is a latency optimisation, the sweep is the correctness backstop.
+
+Delivery semantics are at-least-once end to end: the atomic claim removes
+concurrent duplication, and `Idempotency-Key` (stable across attempts, 3.13)
+lets a subscriber drop the residual replay that only a crash between POST
+and state write can produce. Exactly-once to a subscriber without receiver
+cooperation is not claimed; VERIFICATION.md records both the raw POST counts
+and the per-key counts for the fault runs.
+
+Verification (fault injection, driven by the same record/replay discipline
+as the engine: seeded deterministic load generator, every receiver POST
+appended to a JSONL record, assertions replayed off the record):
+(a) kill the replica-set primary mid-delivery -- zero accepted alerts lost,
+no duplicate per-key delivery, service resumes after failover;
+(b) SIGKILL a worker process mid-delivery -- its lease expires, another
+worker finishes the work, zero lost;
+(c) replay every accepted request as a duplicate -- zero new documents,
+every response carries the original delivery_id.
+Benchmarks, measured against the compose replica set: accepted alerts/s,
+p99 accept latency (insert w:majority on the path), and time from primary
+kill to first post-failover delivery.
+
 ## 4. Verification requirements
 - Unit tests per module, written from this spec by the test-writer agent.
 - Replay-determinism test in CI (checksum match).

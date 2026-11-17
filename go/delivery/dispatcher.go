@@ -78,6 +78,8 @@ func (d *Dispatcher) Stats() Stats {
 
 func (d *Dispatcher) markAccepted()  { atomic.AddInt64(&d.accepted, 1) }
 func (d *Dispatcher) markDuplicate() { atomic.AddInt64(&d.duplicate, 1) }
+func (d *Dispatcher) markDelivered() { atomic.AddInt64(&d.delivered, 1) }
+func (d *Dispatcher) markRetried()   { atomic.AddInt64(&d.retried, 1) }
 
 // Deliver sends body to every subscriber under the given idempotency key,
 // retrying retryable failures. It returns the first error encountered; any

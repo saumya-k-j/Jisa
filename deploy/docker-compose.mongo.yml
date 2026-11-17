@@ -1,0 +1,68 @@
+# 3-node MongoDB replica set for the durable delivery store (SPEC 3.15).
+#
+# Members are advertised as mongo1:27017 / mongo2:27018 / mongo3:27019.
+# Inside the compose network those names resolve natively; on the host, add
+#   127.0.0.1 mongo1 mongo2 mongo3
+# to /etc/hosts (the ports are mapped 1:1), then:
+#
+#   docker compose -f deploy/docker-compose.mongo.yml up -d --wait
+#   export MONGODB_URI='mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0'
+#
+# The URI lives in the environment only -- never committed (SPEC 3.15).
+
+services:
+  mongo1:
+    image: mongo:8.0
+    container_name: jisa-mongo1
+    command: ["mongod", "--replSet", "rs0", "--port", "27017", "--bind_ip_all"]
+    ports: ["27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27017", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongo2:
+    image: mongo:8.0
+    container_name: jisa-mongo2
+    command: ["mongod", "--replSet", "rs0", "--port", "27018", "--bind_ip_all"]
+    ports: ["27018:27018"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongo3:
+    image: mongo:8.0
+    container_name: jisa-mongo3
+    command: ["mongod", "--replSet", "rs0", "--port", "27019", "--bind_ip_all"]
+    ports: ["27019:27019"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  rs-init:
+    image: mongo:8.0
+    depends_on:
+      mongo1: { condition: service_healthy }
+      mongo2: { condition: service_healthy }
+      mongo3: { condition: service_healthy }
+    restart: "no"
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo1
+      - --port
+      - "27017"
+      - --quiet
+      - --eval
+      - >
+        try { rs.status(); } catch (e) {
+          rs.initiate({_id: "rs0", members: [
+            {_id: 0, host: "mongo1:27017"},
+            {_id: 1, host: "mongo2:27018"},
+            {_id: 2, host: "mongo3:27019"}]});
+        }

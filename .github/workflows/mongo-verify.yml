@@ -1,0 +1,149 @@
+# Durable delivery store verification (SPEC 3.15): integration tests against
+# a real 3-node replica set, fault injection (primary kill, worker kill,
+# duplicate replay) and benchmarks. Produces go/verification/mongo_results.json
+# and commits it back to the branch, so every number in VERIFICATION.md and
+# the README maps to a run of this workflow.
+name: mongo-verify
+
+on:
+  push:
+    branches: [mongo-durable-store]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # The results commit uses [skip mongo-verify] to avoid re-triggering.
+    if: ${{ !contains(github.event.head_commit.message, '[skip mongo-verify]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: go/go.mod
+
+      - name: Resolve modules (generates go.sum if absent)
+        working-directory: go
+        run: go mod tidy && git diff --stat -- go.mod go.sum || true
+
+      - name: Host names for the replica set
+        run: echo "127.0.0.1 mongo1 mongo2 mongo3" | sudo tee -a /etc/hosts
+
+      - name: Start 3-node replica set
+        run: |
+          docker compose -f deploy/docker-compose.mongo.yml up -d --wait mongo1 mongo2 mongo3
+          docker compose -f deploy/docker-compose.mongo.yml run --rm rs-init
+          # wait for a writable primary
+          for i in $(seq 1 60); do
+            PRIMARY=$(docker exec jisa-mongo1 mongosh --port 27017 --quiet --eval 'db.hello().isWritablePrimary' || true)
+            [ "$PRIMARY" = "true" ] && break || sleep 1
+          done
+
+      - name: gofmt + vet
+        working-directory: go
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+
+      - name: Integration tests under the race detector (replica set)
+        working-directory: go
+        env:
+          MONGODB_URI: mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0
+        run: go test -race -count=1 -v ./... 2>&1 | tee /tmp/integration.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Count test cases
+        working-directory: go
+        env:
+          MONGODB_URI: mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0
+        run: |
+          PASS=$(grep -c -- '--- PASS' /tmp/integration.log)
+          SKIP=$(grep -c -- '--- SKIP' /tmp/integration.log) || true
+          echo "TEST_PASS=$PASS" >> "$GITHUB_ENV"
+          echo "TEST_SKIP=$SKIP" >> "$GITHUB_ENV"
+
+      - name: Build binaries
+        working-directory: go
+        run: |
+          go build -o /tmp/alertd ./cmd/alertd
+          go build -o /tmp/faultcheck ./cmd/faultcheck
+          go build -o /tmp/alertbench ./cmd/alertbench
+
+      - name: Fault injection (5 x primary kill, 5 x worker kill, 5 x replay)
+        working-directory: go
+        env:
+          MONGODB_URI: mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0
+        run: |
+          mkdir -p /tmp/results
+          set -o pipefail
+          for s in primary worker replay; do
+            for i in 1 2 3 4 5; do
+              echo "=== scenario $s run $i"
+              /tmp/faultcheck -scenario "$s" -n 200 -seed "$i" \
+                -alertd /tmp/alertd -record "/tmp/results/${s}_${i}.jsonl" \
+                | tee -a /tmp/results/fault.log
+              # give the set time to re-elect / settle between runs
+              sleep 5
+              for c in jisa-mongo1 jisa-mongo2 jisa-mongo3; do docker start "$c" >/dev/null 2>&1 || true; done
+              sleep 5
+            done
+          done
+
+      - name: Benchmark (accept path, w:majority)
+        working-directory: go
+        env:
+          MONGODB_URI: mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0
+        run: |
+          JISA_DELIVERY_ADDR=:8085 \
+          JISA_DELIVERY_SECRET=whsec_bench \
+          JISA_DELIVERY_SUBSCRIBERS=http://127.0.0.1:9/null \
+          JISA_DELIVERY_DEAD_LETTER=/dev/null \
+          JISA_DELIVERY_DB=jisa_bench \
+          JISA_DELIVERY_WORKERS=1 \
+          /tmp/alertd & echo $! > /tmp/alertd.pid
+          sleep 2
+          /tmp/alertbench -url http://127.0.0.1:8085 -n 5000 -c 32 | tee /tmp/results/bench.log
+          kill "$(cat /tmp/alertd.pid)" || true
+
+      - name: Aggregate results
+        run: |
+          python3 - <<'EOF'
+          import json, re, os
+          faults = []
+          with open('/tmp/results/fault.log') as f:
+              for line in f:
+                  if line.startswith('RESULT '):
+                      faults.append(json.loads(line[7:]))
+          bench = None
+          with open('/tmp/results/bench.log') as f:
+              for line in f:
+                  if line.startswith('RESULT '):
+                      bench = json.loads(line[7:])
+          out = {
+              'commit': os.environ.get('GITHUB_SHA'),
+              'runner': 'ubuntu-latest (GitHub Actions)',
+              'mongodb': 'mongo:8.0 x3, replicaSet rs0, w:majority',
+              'tests_passed': int(os.environ.get('TEST_PASS', '0')),
+              'tests_skipped': int(os.environ.get('TEST_SKIP', '0')),
+              'fault_runs': faults,
+              'bench': bench,
+          }
+          os.makedirs('go/verification', exist_ok=True)
+          with open('go/verification/mongo_results.json', 'w') as f:
+              json.dump(out, f, indent=2)
+          print(json.dumps(out, indent=2))
+          EOF
+        env:
+          TEST_PASS: ${{ env.TEST_PASS }}
+          TEST_SKIP: ${{ env.TEST_SKIP }}
+
+      - name: Commit results back to the branch
+        run: |
+          git config user.name "jisa-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add go/verification/mongo_results.json go/go.sum go/go.mod
+          git commit -m "mongo-verify: measured results for ${GITHUB_SHA::8} [skip mongo-verify]"
+          git push origin HEAD:mongo-durable-store
