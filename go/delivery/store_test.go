@@ -294,13 +294,23 @@ func TestOutcomeTransitions(t *testing.T) {
 		t.Fatalf("next_attempt_at beyond backoff cap: %v", naa.Time())
 	}
 
+	// key-retry is due again almost immediately (jitter can draw ~0), so
+	// drain it first or the next claim hands it out instead of key-dead.
+	cr, err := s.Claim(ctx, "w0")
+	if err != nil || cr == nil || cr.Key != "key-retry" {
+		t.Fatalf("re-claim of rescheduled alert: %+v err=%v, want key-retry", cr, err)
+	}
+	if err := s.Delivered(ctx, cr); err != nil {
+		t.Fatalf("Delivered(key-retry): %v", err)
+	}
+
 	// failed: terminal, dead-letter record appended (3.13 format).
 	if _, _, err := s.Accept(ctx, "key-dead", []byte(testBody)); err != nil {
 		t.Fatal(err)
 	}
 	c, _ = s.Claim(ctx, "w0")
-	if c == nil {
-		t.Fatal("claim key-dead")
+	if c == nil || c.Key != "key-dead" {
+		t.Fatalf("claim key-dead, got %+v", c)
 	}
 	if err := s.Failed(ctx, c, fmt.Errorf("delivery: http://a/hook returned 404 (permanent)")); err != nil {
 		t.Fatalf("Failed: %v", err)
@@ -328,31 +338,32 @@ func TestIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list indexes: %v", err)
 	}
-	var idx []bson.M
+	var idx []struct {
+		Key                bson.D `bson:"key"`
+		Unique             bool   `bson:"unique"`
+		ExpireAfterSeconds *int32 `bson:"expireAfterSeconds"`
+	}
 	if err := cur.All(ctx, &idx); err != nil {
 		t.Fatalf("decode indexes: %v", err)
 	}
 
+	has := func(d bson.D, field string) bool {
+		for _, e := range d {
+			if e.Key == field {
+				return true
+			}
+		}
+		return false
+	}
 	var unique, claim, ttl bool
 	for _, ix := range idx {
-		key, _ := ix["key"].(bson.M)
 		switch {
-		case key["idempotency_key"] != nil:
-			u, _ := ix["unique"].(bool)
-			unique = u
-		case key["state"] != nil && key["next_attempt_at"] != nil:
+		case has(ix.Key, "idempotency_key"):
+			unique = ix.Unique
+		case has(ix.Key, "state") && has(ix.Key, "next_attempt_at"):
 			claim = true
-		case key["delivered_at"] != nil:
-			if exp, ok := ix["expireAfterSeconds"]; ok {
-				switch v := exp.(type) {
-				case int32:
-					ttl = v == 1234
-				case int64:
-					ttl = v == 1234
-				case float64:
-					ttl = v == 1234
-				}
-			}
+		case has(ix.Key, "delivered_at"):
+			ttl = ix.ExpireAfterSeconds != nil && *ix.ExpireAfterSeconds == 1234
 		}
 	}
 	if !unique || !claim || !ttl {
