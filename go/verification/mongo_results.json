@@ -1,0 +1,193 @@
+{
+  "commit": "934cb3c1f3da174caed89c97494e93edb52bed2f",
+  "runner": "ubuntu-latest (GitHub Actions)",
+  "mongodb": "mongo:8.0 x3, replicaSet rs0, w:majority",
+  "tests_passed": 53,
+  "tests_skipped": 0,
+  "fault_runs": [
+    {
+      "scenario": "primary",
+      "seed": 1,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "accept_outage_ms": 10956,
+      "resume_delivery_ms": 10364,
+      "pass": true
+    },
+    {
+      "scenario": "primary",
+      "seed": 2,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "accept_outage_ms": 11492,
+      "resume_delivery_ms": 9809,
+      "pass": true
+    },
+    {
+      "scenario": "primary",
+      "seed": 3,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "accept_outage_ms": 11592,
+      "resume_delivery_ms": 9922,
+      "pass": true
+    },
+    {
+      "scenario": "primary",
+      "seed": 4,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "accept_outage_ms": 11264,
+      "resume_delivery_ms": 10184,
+      "pass": true
+    },
+    {
+      "scenario": "primary",
+      "seed": 5,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "accept_outage_ms": 10751,
+      "resume_delivery_ms": 10210,
+      "pass": true
+    },
+    {
+      "scenario": "worker",
+      "seed": 1,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 201,
+      "dup_posts": 1,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "worker",
+      "seed": 2,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 202,
+      "dup_posts": 2,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "worker",
+      "seed": 3,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 202,
+      "dup_posts": 2,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "worker",
+      "seed": 4,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 202,
+      "dup_posts": 2,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "worker",
+      "seed": 5,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 202,
+      "dup_posts": 2,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "replay",
+      "seed": 1,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "replay",
+      "seed": 2,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "replay",
+      "seed": 3,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "replay",
+      "seed": 4,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "pass": true
+    },
+    {
+      "scenario": "replay",
+      "seed": 5,
+      "n": 200,
+      "accepted": 200,
+      "delivered_unique": 200,
+      "raw_posts": 200,
+      "dup_posts": 0,
+      "lost": 0,
+      "pass": true
+    }
+  ],
+  "bench": {
+    "accepts_per_s": 1432.2891556474415,
+    "concurrency": 32,
+    "max_ms": 77.452,
+    "n": 5000,
+    "p50_ms": 19.8,
+    "p99_ms": 45.437,
+    "wall_s": 3.490915211
+  }
+}

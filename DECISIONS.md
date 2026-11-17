@@ -290,3 +290,31 @@ quiet market. The monitor worth paging on is therefore on
 signal kept beside it. This mirrors the reasoning already in app.py, where
 `/health` deliberately returns 200 for a stale-but-readable feed and leaves
 staleness to monitors.
+
+## D-055: MongoDB replica set as the durable delivery store (supersedes D-051's loss window)
+D-051 accepted that a crash loses in-flight deliveries, because durability
+meant a WAL or a broker and SPEC 6 rules out the broker. SPEC 3.15 revisits
+the trade: a replica set is a store, not a broker -- no new authorization
+surface, and the sidecar still speaks plain HTTP to subscribers. Accept
+inserts with majority write concern BEFORE answering 202, so an accepted
+alert survives the loss of any single node; the unique index on
+idempotency_key makes a duplicate-key error the "already accepted" answer
+rather than a failure; workers claim with one atomic findOneAndUpdate
+(pending and due, or in_flight past its lease), which is the entire
+mutual-exclusion story -- no distributed lock. The change stream is the
+wakeup latency path, with its resume token persisted so a restarted worker
+continues where it stopped; the ticker sweep is the correctness backstop,
+because a stream cannot signal the passage of time (a due retry, an expired
+lease). This ends D-049's "no modules" line: the official driver v2
+(pinned, go.sum committed) is the single dependency, and with MONGODB_URI
+unset the sidecar still runs the 3.13 in-memory mode, so the
+zero-dependency deployment remains available. At-least-once is stated
+honestly end to end: a worker SIGKILLed between POST and outcome write is
+redelivered after the lease by design, and the CI fault runs measured 1-2
+such same-key replays per 200 alerts, which the stable Idempotency-Key lets
+a receiver dedupe to zero. Measured on the 3-node compose replica set in CI
+(go/verification/mongo_results.json, commit 934cb3c1): zero lost in 15/15
+fault-injection runs; zero duplicate POSTs under primary kill and under
+duplicate replay; accept outage 10.8-11.6 s across five primary kills
+(mongod's default election timeout, not this code); 1,432 accepts/s with
+p99 45.4 ms at 32 concurrent posters, the w:majority insert on the path.
