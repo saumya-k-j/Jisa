@@ -101,7 +101,10 @@ The detection layers run on a single consumer thread that drains the ring and
 executes L1->L4 in order; the triage agent and API never touch the hot path
 Alerts also fan out through `go/`, a Go delivery sidecar that signs each
 payload, retries with full jitter and dead-letters what never lands; like the
-agent it sits strictly post-alert (SPEC 3.13, DECISIONS D-049).
+agent it sits strictly post-alert (SPEC 3.13, DECISIONS D-049). With
+`MONGODB_URI` set it runs durably against a MongoDB replica set: majority
+write before the 202, atomic worker claims, change-stream wakeup with a
+persisted resume token (SPEC 3.15, D-055).
 See `docs/architecture.md` for a prose walkthrough of one message's life and the
 determinism story.
 
@@ -159,10 +162,15 @@ recorded feed (60 adsb.fi polls, 26 aircraft, Heathrow area).
   new`, and it runs in the Release tree only — it is excluded from sanitizer
   builds entirely, because its global `operator new/delete` overrides collide
   at link time with the ASan/TSan runtimes' own interceptors (D-048).
-- **Delivery is at-least-once within a process lifetime, not across a crash**:
-the sidecar's queue and dedupe map are in-memory, so deliveries in flight are
-lost if the process dies (D-051). Stated rather than fixed; durability would
-need a WAL or a broker, and SPEC 6 rules out the broker.
+- **Delivery durability is mode-dependent**: with `MONGODB_URI` set, an
+  accepted alert is on a majority of replica-set nodes before the 202 and
+  survives process death and single-node loss -- measured, not assumed: 15/15
+  CI fault runs (primary kill, worker SIGKILL, duplicate replay) with zero
+  lost (D-055, go/verification/mongo_results.json). A worker killed between
+  POST and outcome write is redelivered after its lease by design (1-2
+  same-key replays per 200 under SIGKILL, deduped to zero by the stable
+  Idempotency-Key). Without `MONGODB_URI` the original in-memory mode runs,
+  and D-051's loss window applies to it unchanged.
 - **CI** (`.github/workflows/ci.yml`) is authored but **unverified until
   pushed** — it cannot run in this environment. The YAML is syntactically
   validated (see below); the jobs themselves have not executed.
@@ -254,15 +262,32 @@ app = create_app(runner)   # GET /status /alerts /healthz
 
 ### Go delivery sidecar
 
-Standard library only, so it builds offline with no module downloads.
+One dependency: the official MongoDB Go driver v2, pinned. Without
+`MONGODB_URI` every Mongo-backed test skips and the binary runs the original
+in-memory mode, so the offline build still works.
 
 ```
 cd go
-go test ./...                      # 39 cases
+go test ./...                      # Mongo tests skip without MONGODB_URI
 go test -race -count=3 ./...
-go test -cover ./delivery/         # 89.7% of statements
 go build -o ../build/alertd ./cmd/alertd
 ```
+
+Durable mode needs the 3-node replica set (once:
+`echo "127.0.0.1 mongo1 mongo2 mongo3" | sudo tee -a /etc/hosts`):
+
+```
+docker compose -f deploy/docker-compose.mongo.yml up -d --wait
+export MONGODB_URI='mongodb://mongo1:27017,mongo2:27018,mongo3:27019/?replicaSet=rs0'
+cd go && go test -race -count=1 ./...   # 53 cases against the live replica set
+```
+
+Measured on that topology in CI (fault injection via `go run ./cmd/faultcheck`,
+benchmark via `go run ./cmd/alertbench`; raw JSON in
+`go/verification/mongo_results.json`): **1,432 accepts/s** at 32 posters with
+the w:majority insert on the path (p50 19.8 ms, p99 45.4 ms); **zero lost
+alerts in 15/15 fault runs**; primary kill costs a 10.8-11.6 s accept outage
+(mongod's election timeout) with delivery resuming in ~10 s.
 
 Run it beside the engine; every variable below is required except the last two:
 
@@ -307,15 +332,19 @@ python/
   agent/            tools.py, triage.py, evaluate.py, run_eval.py (post-alert triage)
   tests/            binding tests
 go/
-  cmd/alertd/       delivery sidecar binary (stdlib only, no modules)
-  delivery/         signature, backoff, dedupe, dispatcher, server (+ tests)
+  cmd/alertd/       delivery sidecar binary (in-memory or durable Mongo mode)
+  cmd/faultcheck/   fault-injection harness: primary kill / worker kill / replay
+  cmd/alertbench/   accept-path benchmark (refuses to run against the wrong mode)
+  delivery/         signature, backoff, dedupe, dispatcher, server, store, worker (+ tests)
+  verification/     mongo_results.json -- measured CI results (mongo-verify.yml)
 config/             per-domain YAML (crypto_ticks, grid_eu_freq, adsb_alt_baro)
 docs/
   feeds/            researched feed API references
   domain_cards/     per-domain knowledge the triage agent reads
   eval_runs/        raw auditable triage evaluation tables
   architecture.md   diagram + message-life walkthrough + determinism story
-.github/workflows/  ci.yml (release / ASan+UBSan / TSan / python)
+.github/workflows/  ci.yml (release / ASan+UBSan / TSan / python / go)
+                    mongo-verify.yml (replica set: integration + faults + bench)
 SPEC.md  PLAN.md  DECISIONS.md  VERIFICATION.md
 ```
 

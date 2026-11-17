@@ -237,3 +237,20 @@ Phases: see SPEC.md section 7. Mark each done only when reviewer passes it.
 - Open: nothing has been sent to a real Datadog account yet, and the
   engine-vs-Datadog detection-latency comparison is unrun. Both are
   needs-live-validation in VERIFICATION.md.
+
+## Phase 10 -- go/delivery durable store on MongoDB (DONE 2026-11-17)
+- SPEC 3.15 written first, then 14 tests from that contract across store /
+  change stream / worker, RED confirmed (`go vet`: "undefined: StoreConfig"),
+  then implementation. Single author, as D-052.
+- Majority-write accept before 202; unique idempotency_key with duplicate-key
+  as the already-accepted answer; pending/in_flight/delivered/failed with
+  atomic findOneAndUpdate claims and lease reclaim; change-stream wakeup with
+  persisted resume token; configurable TTL on delivered alerts; the 3.13
+  jittered backoff unchanged. In-memory mode preserved when MONGODB_URI is
+  unset (D-055).
+- Verified in CI against a real 3-node replica set (mongo-verify.yml): 53
+  cases under -race, 15/15 fault-injection runs zero-lost (primary kill,
+  worker SIGKILL, duplicate replay), 1,432 accepts/s p99 45.4 ms. Raw data:
+  go/verification/mongo_results.json.
+- Open: numbers are from the CI runner; replica-set-on-real-hardware and a
+  remote subscriber over the public internet remain needs-live-validation.
